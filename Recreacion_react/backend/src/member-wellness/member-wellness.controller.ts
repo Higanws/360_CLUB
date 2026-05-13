@@ -1,0 +1,45 @@
+import {
+  Body,
+  Controller,
+  Get,
+  Patch,
+  Query,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
+import { AuthGuard } from '@nestjs/passport';
+import { MemberPreviewQueryDto } from './dto/member-preview-query.dto';
+import { PatchWeeklyRoutineDto } from './dto/patch-weekly-routine.dto';
+import { WeeklyRoutineQueryDto } from './dto/weekly-routine-query.dto';
+import { MemberWellnessService } from './member-wellness.service';
+
+type JwtReq = { user: { userId: number; role_name: string } };
+
+@Controller('member-wellness')
+@UseGuards(AuthGuard('jwt'))
+export class MemberWellnessController {
+  constructor(private readonly wellness: MemberWellnessService) {}
+
+  @Get('my-nutrition-plan')
+  myNutritionPlan(@Req() req: JwtReq, @Query() q: MemberPreviewQueryDto) {
+    return this.wellness.getMyNutritionPlan(req.user, q.member_id);
+  }
+
+  @Get('my-training-context')
+  myTrainingContext(@Req() req: JwtReq, @Query() q: MemberPreviewQueryDto) {
+    return this.wellness.getMyTrainingContext(req.user, q.member_id);
+  }
+
+  @Get('weekly-routine')
+  getWeeklyRoutine(
+    @Req() req: JwtReq,
+    @Query() q: WeeklyRoutineQueryDto,
+  ) {
+    return this.wellness.getWeeklyRoutine(req.user, q.week_start, q.member_id);
+  }
+
+  @Patch('weekly-routine')
+  patchWeeklyRoutine(@Req() req: JwtReq, @Body() dto: PatchWeeklyRoutineDto) {
+    return this.wellness.patchWeeklyRoutine(req.user, dto);
+  }
+}

@@ -1,0 +1,22 @@
+# Servicio mínimo: MySQL 8 en Docker (sin Prisma migrate al arrancar).
+# Para MariaDB + migraciones automáticas, usa: ../database/docker-compose.yml
+#
+# Uso (desde esta carpeta):
+#   docker compose up -d
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: club360-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: club360
+    ports:
+      - '3306:3306'
+    volumes:
+      - club360_mysql_data:/var/lib/mysql
+    command: ['--character-set-server=utf8mb4', '--collation-server=utf8mb4_unicode_ci']
+
+volumes:
+  club360_mysql_data:
+    name: club360_mysql_data

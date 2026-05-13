@@ -1,0 +1,16 @@
+# Imagen mínima para ejecutar `prisma migrate deploy` contra MariaDB.
+# Contexto de build: raíz del repo `Recreacion_react` (ver docker-compose.yml).
+
+FROM node:20-bookworm-slim
+
+WORKDIR /app
+
+COPY backend/package.json backend/package-lock.json ./
+RUN npm ci --ignore-scripts
+
+COPY backend/prisma ./prisma/
+
+# Cliente generado (postinstall del backend); migrate deploy no lo exige pero evita avisos.
+RUN npx prisma generate
+
+CMD ["npx", "prisma", "migrate", "deploy"]

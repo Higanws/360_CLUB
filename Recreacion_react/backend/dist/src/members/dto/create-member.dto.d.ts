@@ -1,0 +1,30 @@
+export declare class CreateMemberDto {
+    first_name: string;
+    last_name: string;
+    username: string;
+    password: string;
+    email?: string;
+    mobile?: string;
+    phone?: string;
+    gender: 'male' | 'female' | 'other';
+    birth_date?: string;
+    address?: string;
+    city?: string;
+    state?: string;
+    zipcode?: string;
+    di_dni_type: 'DI' | 'DNI';
+    di_dni_number: string;
+    membership_valid_from?: string;
+    membership_valid_to?: string;
+    selected_membership?: string;
+    assign_staff_mem?: number;
+    activated?: number;
+    assign_class_ids?: number[];
+    physical_weight_kg?: number;
+    physical_height_cm?: number;
+    physical_chest_cm?: number;
+    physical_waist_cm?: number;
+    physical_thigh_cm?: number;
+    physical_arms_cm?: number;
+    physical_fat_percent?: number;
+}

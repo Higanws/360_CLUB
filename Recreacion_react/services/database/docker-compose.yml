@@ -1,0 +1,73 @@
+# =============================================================================
+# Club360 — servicio de base de datos (independiente de API y frontend)
+#
+# Ubicación: services/database/
+#
+# Incluye:
+#   - MariaDB con volumen persistente (datos sobreviven a `docker compose down`)
+#   - Job prisma-migrate: aplica migraciones en backend/prisma/migrations al subir el stack
+#
+# Uso (desde esta carpeta):
+#   docker compose up -d
+#
+# Primera vez: MariaDB crea la BD vacía (MARIADB_DATABASE); el contenedor migrate
+# ejecuta `prisma migrate deploy` y crea las tablas. Siguientes arranques: migrate es idempotente.
+#
+# Conectar desde el host (backend/.env):
+#   DATABASE_HOST=127.0.0.1
+#   DATABASE_PORT=3306
+#   DATABASE_USER=root
+#   DATABASE_PASSWORD=root   (o el valor de MARIADB_ROOT_PASSWORD)
+#   DATABASE_NAME=club360
+#   DATABASE_URL=mysql://root:root@127.0.0.1:3306/club360
+#
+# Parar sin borrar datos:
+#   docker compose stop
+# Borrar contenedores pero conservar volumen:
+#   docker compose down
+# Borrar también los datos (¡cuidado!):
+#   docker compose down -v
+# =============================================================================
+
+services:
+  mariadb:
+    image: mariadb:11.4
+    container_name: club360-mariadb
+    environment:
+      MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD:-root}
+      MARIADB_DATABASE: ${MARIADB_DATABASE:-club360}
+    ports:
+      - '${DB_PORT:-3306}:3306'
+    volumes:
+      - club360_mariadb_data:/var/lib/mysql
+    command:
+      [
+        '--character-set-server=utf8mb4',
+        '--collation-server=utf8mb4_unicode_ci',
+      ]
+    healthcheck:
+      test:
+        [
+          'CMD-SHELL',
+          'mariadb-admin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD || exit 1',
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 40s
+
+  prisma-migrate:
+    build:
+      context: ../..
+      dockerfile: services/database/Dockerfile.migrate
+    container_name: club360-prisma-migrate
+    environment:
+      DATABASE_URL: mysql://root:${MARIADB_ROOT_PASSWORD:-root}@mariadb:3306/${MARIADB_DATABASE:-club360}
+    depends_on:
+      mariadb:
+        condition: service_healthy
+    restart: 'no'
+
+volumes:
+  club360_mariadb_data:
+    name: club360_mariadb_data

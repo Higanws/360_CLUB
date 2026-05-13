@@ -1,0 +1,98 @@
+/* Grilla semanal editable: horas × Lunes–Domingo */
+.nutrition-cal-wrap {
+  overflow: auto;
+  max-height: min(78vh, 880px);
+  border-radius: 8px;
+  border: 1px solid var(--mm-border, rgba(255, 255, 255, 0.12));
+}
+
+.nutrition-cal-grid {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 0.82rem;
+}
+
+.nutrition-cal-grid--editable {
+  min-width: 980px;
+}
+
+.nutrition-cal-grid th,
+.nutrition-cal-grid td {
+  border: 1px solid var(--mm-border, rgba(255, 255, 255, 0.1));
+  padding: 4px;
+  vertical-align: top;
+}
+
+.nutrition-cal-grid thead th {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  background: var(--mm-sidebar-bg, #151922);
+}
+
+.nutrition-cal-time {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  background: var(--mm-sidebar-bg, #151922);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  width: 4.75rem;
+  text-align: right;
+  padding-right: 8px !important;
+}
+
+.nutrition-cal-corner {
+  position: sticky;
+  left: 0;
+  z-index: 4;
+  background: var(--mm-sidebar-bg, #151922);
+  min-width: 4.75rem;
+}
+
+.nutrition-cal-cell {
+  min-width: 118px;
+  max-width: 200px;
+  background: rgba(127, 127, 127, 0.04);
+}
+
+.nutrition-cal-cell-textarea {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  min-height: 5.5rem;
+  max-height: 12rem;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0.45rem 0.5rem;
+  border-radius: 6px;
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.16));
+  background: var(--bg-page, #0f1218);
+  color: inherit;
+  font: inherit;
+  font-size: 0.78rem;
+  line-height: 1.35;
+  resize: vertical;
+}
+
+.nutrition-cal-cell-textarea:focus {
+  outline: none;
+  border-color: rgba(59, 130, 246, 0.65);
+  box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.25);
+}
+
+.nutrition-cal-cell-textarea:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  resize: none;
+}
+
+.nutrition-cal-cell-textarea::placeholder {
+  color: var(--text-muted, #6b7280);
+  font-size: 0.72rem;
+}
+
+.nutrition-cal-legend {
+  margin-top: 0.5rem;
+  font-size: 0.85rem;
+}

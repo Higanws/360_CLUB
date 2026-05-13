@@ -1,0 +1,350 @@
+// Esquema Club360 MVP — mantener alineado con `src/entities/*.entity.ts`
+// y `../database/schema/schema_mysql.sql`. TypeORM sigue siendo el cliente de runtime en Nest.
+// Migraciones: una sola baseline en `prisma/migrations/` (regenerar con
+// `npx prisma migrate diff --from-empty --to-schema-datamodel prisma/schema.prisma --script`
+// si cambias modelos y quieres reemplazar el SQL del baseline).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model GeneralSetting {
+  id                       Int     @id @default(autoincrement())
+  name                     String? @db.VarChar(100)
+  gym_logo                 String? @db.VarChar(200)
+  left_header              String? @db.VarChar(100)
+  footer                   String? @db.VarChar(100)
+  header_color             String? @db.VarChar(10)
+  currency                 String? @db.VarChar(20)
+  member_can_view_other    Int?
+  staff_can_view_own_member Int?
+  date_format              String? @db.VarChar(15)
+
+  @@map("general_setting")
+}
+
+model GymRole {
+  id   Int     @id @default(autoincrement())
+  name String? @db.VarChar(100)
+
+  @@map("gym_roles")
+}
+
+model Specialization {
+  id   Int     @id @default(autoincrement())
+  name String? @db.VarChar(100)
+
+  @@map("specialization")
+}
+
+model Membership {
+  id                    Int     @id @default(autoincrement())
+  membership_label      String? @db.VarChar(100)
+  membership_amount     Float?
+  membership_period_days Int?
+  installment_plan      String? @db.VarChar(100)
+  signup_fee            Float?
+  description           String? @db.Text
+  image                 String? @db.VarChar(200)
+
+  @@map("membership")
+}
+
+model ClassSchedule {
+  id         Int     @id @default(autoincrement())
+  class_name String? @db.VarChar(100)
+
+  @@map("class_schedule")
+}
+
+model GymMember {
+  id                   Int       @id @default(autoincrement())
+  activated            Int?
+  role_name            String?   @db.Text
+  member_id            String?   @db.Text
+  di_dni_type          String?   @db.VarChar(10)
+  di_dni_number        String?   @db.VarChar(30)
+  first_name           String?   @db.VarChar(100)
+  middle_name          String?   @db.VarChar(100)
+  last_name            String?   @db.VarChar(100)
+  member_type          String?   @db.Text
+  role                 Int?
+  s_specialization     String?   @db.Text
+  gender               String?   @db.Text
+  birth_date           DateTime? @db.Date
+  address              String?   @db.VarChar(100)
+  city                 String?   @db.VarChar(100)
+  state                String?   @db.VarChar(100)
+  zipcode              String?   @db.VarChar(100)
+  mobile               String?   @db.VarChar(20)
+  phone                String?   @db.VarChar(20)
+  email                String?   @db.VarChar(100)
+  username             String?   @db.VarChar(100)
+  password             String?   @db.VarChar(255)
+  image                String?   @db.VarChar(200)
+  assign_staff_mem     Int?
+  intrested_area       Int?
+  g_source             Int?
+  referrer_by          Int?
+  inquiry_date         DateTime? @db.Date
+  trial_end_date       DateTime? @db.Date
+  selected_membership  String?   @db.VarChar(100)
+  membership_status    String?   @db.Text
+  membership_valid_from DateTime? @db.Date
+  membership_valid_to  DateTime? @db.Date
+  first_pay_date       DateTime? @db.Date
+  created_by           Int?
+  created_date         DateTime? @db.Date
+
+  physical_weight_kg   Decimal?  @db.Decimal(10, 2)
+  physical_height_cm   Decimal?  @db.Decimal(10, 2)
+  physical_chest_cm    Decimal?  @db.Decimal(10, 2)
+  physical_waist_cm    Decimal?  @db.Decimal(10, 2)
+  physical_thigh_cm    Decimal?  @db.Decimal(10, 2)
+  physical_arms_cm     Decimal?  @db.Decimal(10, 2)
+  physical_fat_percent Decimal?  @db.Decimal(10, 2)
+
+  nutrition_plan NutritionPlan?
+  member_weekly_routines MemberWeeklyRoutine[]
+  club_access_logs_as_member ClubAccessLog[] @relation("ClubAccessLogMember")
+  club_access_logs_as_staff  ClubAccessLog[] @relation("ClubAccessLogStaff")
+
+  activity_trainers ActivityTrainer[]
+  training_assignment_members TrainingAssignmentMember[]
+  training_assignment_trainers TrainingAssignmentTrainer[]
+
+  @@map("gym_member")
+}
+
+model GymMemberClass {
+  id          Int  @id @default(autoincrement())
+  member_id   Int?
+  assign_class Int?
+
+  @@index([member_id], map: "idx_gym_member_class_member")
+  @@index([assign_class], map: "idx_gym_member_class_assign")
+  @@map("gym_member_class")
+}
+
+model MembershipPayment {
+  mp_id              Int       @id @default(autoincrement())
+  member_id          Int?
+  membership_id      Int?
+  membership_amount  Float?
+  paid_amount        Float?
+  start_date         DateTime? @db.Date
+  end_date           DateTime? @db.Date
+  membership_status String?  @db.VarChar(50)
+  payment_status     String?  @db.VarChar(20)
+  created_date       DateTime? @db.Date
+  created_by         Int?
+
+  @@index([member_id], map: "idx_membership_payment_member")
+  @@index([membership_id], map: "idx_membership_payment_plan")
+  @@map("membership_payment")
+}
+
+model PosProduct {
+  id         Int       @id @default(autoincrement())
+  sku        String?   @db.VarChar(64)
+  name       String    @db.VarChar(200)
+  unit_price Float     @default(0)
+  stock_qty  Int       @default(0)
+  active     Int       @default(1) @db.TinyInt
+  created_at DateTime? @default(now()) @db.DateTime(0)
+  lines      PosSaleLine[]
+
+  @@index([active], map: "idx_pos_product_active")
+  @@index([name], map: "idx_pos_product_name")
+  @@map("pos_product")
+}
+
+model PosSale {
+  id              Int       @id @default(autoincrement())
+  total_amount    Float
+  created_at      DateTime? @default(now()) @db.DateTime(0)
+  created_by      Int?
+  payment_method  String    @default("efectivo") @db.VarChar(32)
+  lines           PosSaleLine[]
+
+  @@index([created_at], map: "idx_pos_sale_created")
+  @@map("pos_sale")
+}
+
+model PosSaleLine {
+  id         Int   @id @default(autoincrement())
+  sale_id    Int
+  product_id Int
+  qty        Int
+  unit_price Float
+  line_total Float
+  sale       PosSale    @relation(fields: [sale_id], references: [id], onDelete: Cascade)
+  product    PosProduct @relation(fields: [product_id], references: [id])
+
+  @@index([sale_id], map: "idx_pos_sale_line_sale")
+  @@index([product_id], map: "idx_pos_sale_line_product")
+  @@map("pos_sale_line")
+}
+
+model ActivityCategory {
+  id         Int        @id @default(autoincrement())
+  name       String     @db.VarChar(200)
+  activities Activity[]
+
+  @@map("activity_category")
+}
+
+model Activity {
+  id           Int               @id @default(autoincrement())
+  category_id  Int
+  category     ActivityCategory  @relation(fields: [category_id], references: [id])
+  title        String            @db.VarChar(200)
+  description  String?           @db.Text
+  difficulty_level String        @default("media") @db.VarChar(20)
+  created_at   DateTime?         @default(now()) @db.DateTime(0)
+  videos       ActivityVideo[]
+  trainers     ActivityTrainer[]
+  routine_lines  TrainingRoutineActivity[]
+
+  @@index([category_id], map: "idx_activity_category")
+  @@map("activity")
+}
+
+model ActivityVideo {
+  id          Int      @id @default(autoincrement())
+  activity_id Int
+  activity    Activity @relation(fields: [activity_id], references: [id], onDelete: Cascade)
+  url         String   @db.VarChar(800)
+  sort_order  Int      @default(0)
+
+  @@index([activity_id], map: "idx_activity_video_activity")
+  @@map("activity_video")
+}
+
+model ActivityTrainer {
+  id                  Int       @id @default(autoincrement())
+  activity_id       Int
+  trainer_member_id   Int
+  activity            Activity @relation(fields: [activity_id], references: [id], onDelete: Cascade)
+  member              GymMember @relation(fields: [trainer_member_id], references: [id], onDelete: Cascade)
+
+  @@unique([activity_id, trainer_member_id], map: "uk_activity_trainer")
+  @@index([trainer_member_id], map: "idx_activity_trainer_member")
+  @@map("activity_trainer")
+}
+
+model TrainingRoutine {
+  id               Int       @id @default(autoincrement())
+  title            String    @db.VarChar(200)
+  description      String?   @db.Text
+  difficulty_level String    @default("media") @db.VarChar(20)
+  created_at       DateTime? @default(now()) @db.DateTime(0)
+  lines            TrainingRoutineActivity[]
+  assignments      TrainingAssignment[]
+
+  @@map("training_routine")
+}
+
+model TrainingRoutineActivity {
+  id          Int             @id @default(autoincrement())
+  routine_id  Int
+  activity_id Int
+  sort_order  Int             @default(0)
+  weight_kg   Float?
+  /** Bitmask Lun–Dom (1,2,4,8,16,32,64). 127 = todos. */
+  weekdays_mask Int           @default(127) @db.UnsignedTinyInt
+  routine     TrainingRoutine @relation(fields: [routine_id], references: [id], onDelete: Cascade)
+  activity    Activity        @relation(fields: [activity_id], references: [id])
+
+  @@unique([routine_id, activity_id], map: "uk_training_routine_activity")
+  @@index([routine_id], map: "idx_tra_routine")
+  @@index([activity_id], map: "idx_tra_activity")
+  @@map("training_routine_activity")
+}
+
+model TrainingAssignment {
+  id         Int       @id @default(autoincrement())
+  routine_id Int
+  created_at DateTime? @default(now()) @db.DateTime(0)
+  routine    TrainingRoutine @relation(fields: [routine_id], references: [id], onDelete: Cascade)
+  members    TrainingAssignmentMember[]
+  trainers   TrainingAssignmentTrainer[]
+
+  @@index([routine_id], map: "idx_tas_routine")
+  @@map("training_assignment")
+}
+
+model TrainingAssignmentMember {
+  id            Int                @id @default(autoincrement())
+  assignment_id Int
+  member_id     Int
+  assignment    TrainingAssignment @relation(fields: [assignment_id], references: [id], onDelete: Cascade)
+  member        GymMember          @relation(fields: [member_id], references: [id], onDelete: Cascade)
+
+  @@unique([assignment_id, member_id], map: "uk_tam")
+  @@index([member_id], map: "idx_tam_member")
+  @@map("training_assignment_member")
+}
+
+model TrainingAssignmentTrainer {
+  id                  Int                @id @default(autoincrement())
+  assignment_id       Int
+  trainer_member_id   Int
+  assignment          TrainingAssignment @relation(fields: [assignment_id], references: [id], onDelete: Cascade)
+  trainer             GymMember          @relation(fields: [trainer_member_id], references: [id], onDelete: Cascade)
+
+  @@unique([assignment_id, trainer_member_id], map: "uk_tat")
+  @@index([trainer_member_id], map: "idx_tat_trainer")
+  @@map("training_assignment_trainer")
+}
+
+model NutritionPlan {
+  id                   Int       @id @default(autoincrement())
+  member_id            Int       @unique
+  member               GymMember @relation(fields: [member_id], references: [id], onDelete: Cascade)
+  valid_from           DateTime? @db.Date
+  valid_to             DateTime? @db.Date
+  meals_schedule_json  String?   @db.LongText
+  created_at           DateTime? @default(now()) @db.DateTime(0)
+
+  @@map("nutrition_plan")
+}
+
+model MemberWeeklyRoutine {
+  id                     Int       @id @default(autoincrement())
+  member_id              Int
+  /** Lunes de la semana (DATE); semana según Europe/Madrid en la API del portal socio. */
+  week_start             DateTime  @db.Date
+  routine_snapshot_json  String?   @db.LongText
+  updated_at             DateTime? @default(now()) @updatedAt @db.DateTime(0)
+  member                 GymMember @relation(fields: [member_id], references: [id], onDelete: Cascade)
+
+  @@unique([member_id, week_start], map: "member_weekly_routine_member_id_week_start_key")
+  @@map("member_weekly_routine")
+}
+
+/** Registro de intentos de acceso (recepción), alineado con asistencia PHP. */
+model ClubAccessLog {
+  id                 Int       @id @default(autoincrement())
+  member_id          Int?
+  access_date        DateTime  @db.Date
+  access_at          DateTime  @db.DateTime(0)
+  staff_actor_id     Int
+  outcome            String    @db.VarChar(40)
+  status_display     String?   @db.VarChar(40)
+  lookup_raw         String?   @db.VarChar(160)
+  due_date_snapshot  DateTime? @db.Date
+  days_remaining     Int?
+  days_overdue       Int?
+  member             GymMember? @relation("ClubAccessLogMember", fields: [member_id], references: [id], onDelete: SetNull)
+  staff_actor        GymMember  @relation("ClubAccessLogStaff", fields: [staff_actor_id], references: [id], onDelete: Restrict)
+
+  @@index([member_id, access_date], map: "idx_cal_member_date")
+  @@index([staff_actor_id], map: "idx_cal_staff")
+  @@map("club_access_log")
+}
