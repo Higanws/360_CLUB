@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { routes } from '../../config/member-management';
 import { memberPortalRoutes } from '../../config/member-portal';
 import { api } from '../../lib/api';
+import { MmTableActions } from '../../components/mm/MmTableActions';
 import { useAuth } from '../../context/AuthContext';
 
 type OverviewRow = {
@@ -68,7 +69,7 @@ export function NutritionOverviewPage() {
 
       {error ? <p className="login-error">{error}</p> : null}
 
-      <section className="members-panel">
+      <section className="members-panel mm-data-panel">
         <div className="members-table-wrap">
           <table className="members-table">
             <thead>
@@ -104,7 +105,7 @@ export function NutritionOverviewPage() {
                     </td>
                     <td>{vig}</td>
                     <td>{row.meal_count}</td>
-                    <td className="members-actions">
+                    <MmTableActions label={`Dieta de ${name || row.member_id}`}>
                       <Link
                         to={
                           row.plan_id
@@ -115,7 +116,7 @@ export function NutritionOverviewPage() {
                       >
                         {row.plan_id ? 'Editar dieta' : 'Crear dieta'}
                       </Link>
-                    </td>
+                    </MmTableActions>
                   </tr>
                 );
               })}

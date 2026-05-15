@@ -73,6 +73,10 @@ export function AccessControlKioskPage() {
     const r = user.role_name?.trim().toLowerCase() ?? '';
     if (r === 'member') {
       navigate(memberPortalRoutes.wellness, { replace: true });
+      return;
+    }
+    if (r !== 'administrator' && r !== 'staff_member') {
+      navigate('/login', { replace: true });
     }
   }, [user, navigate]);
 

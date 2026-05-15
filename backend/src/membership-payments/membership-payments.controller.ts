@@ -9,14 +9,14 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
-import { AuthGuard } from '@nestjs/passport';
 import { BusinessRoleGuard } from '../members/business-role.guard';
 import { BusinessRoles } from '../members/roles.decorator';
+import { AdministratorRoleGuard } from '../staff/administrator-role.guard';
 import { ManualMembershipPaymentDto } from './dto/manual-membership-payment.dto';
 import { MembershipPaymentsService } from './membership-payments.service';
 
 @Controller('payments/membership')
-@UseGuards(AuthGuard('jwt'), BusinessRoleGuard)
+@UseGuards(BusinessRoleGuard, AdministratorRoleGuard)
 @BusinessRoles()
 export class MembershipPaymentsController {
   constructor(private readonly svc: MembershipPaymentsService) {}

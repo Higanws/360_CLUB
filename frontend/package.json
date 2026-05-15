@@ -7,7 +7,11 @@
     "dev": "vite --port 5173 --strictPort",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:infra": "vitest run test/infra",
+    "test:modules": "vitest run test/modules",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "axios": "^1.16.0",
@@ -28,6 +32,7 @@
     "globals": "^17.5.0",
     "typescript": "~6.0.2",
     "typescript-eslint": "^8.58.2",
-    "vite": "^8.0.10"
+    "vite": "^8.0.10",
+    "vitest": "^3.2.4"
   }
 }

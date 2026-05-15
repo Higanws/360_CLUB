@@ -27,3 +27,21 @@ export function setAuthHeader(token: string | null) {
     delete api.defaults.headers.common.Authorization;
   }
 }
+
+/** Sesión inválida o expirada: AuthContext escucha y hace logout. */
+export const SESSION_EXPIRED_EVENT = 'club360:session-expired';
+
+api.interceptors.response.use(
+  (response) => response,
+  (error: unknown) => {
+    if (
+      typeof error === 'object' &&
+      error !== null &&
+      'response' in error &&
+      (error as { response?: { status?: number } }).response?.status === 401
+    ) {
+      window.dispatchEvent(new CustomEvent(SESSION_EXPIRED_EVENT));
+    }
+    return Promise.reject(error);
+  },
+);

@@ -5,6 +5,7 @@ import { routes } from '../config/member-management';
 import { memberPortalRoutes } from '../config/member-portal';
 import { api } from '../lib/api';
 import { formatMoneyOptional } from '../lib/format-money';
+import { MmTableActions } from '../components/mm/MmTableActions';
 import { useAuth } from '../context/AuthContext';
 
 type Row = {
@@ -189,7 +190,7 @@ export function MembershipPlansPage() {
         </label>
       </div>
 
-      <section className="members-panel">
+      <section className="members-panel mm-data-panel">
         <div className="members-table-wrap">
           <table className="members-table">
             <thead>
@@ -230,7 +231,7 @@ export function MembershipPlansPage() {
                       </td>
                       <td>{row.installment_plan ?? '—'}</td>
                       <td>{formatMoneyOptional(row.signup_fee)}</td>
-                      <td className="members-actions">
+                      <MmTableActions label={`Acciones de ${name}`}>
                         {isAdmin ? (
                           <Link
                             to={routes.membresiasEdit(row.id)}
@@ -256,7 +257,7 @@ export function MembershipPlansPage() {
                         >
                           Ocupaciones
                         </button>
-                      </td>
+                      </MmTableActions>
                     </tr>
                   );
                 })

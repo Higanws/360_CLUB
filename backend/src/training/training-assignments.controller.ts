@@ -9,7 +9,6 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
-import { AuthGuard } from '@nestjs/passport';
 import { BusinessRoleGuard } from '../members/business-role.guard';
 import { BusinessRoles } from '../members/roles.decorator';
 import { CreateTrainingAssignmentDto } from './dto/create-training-assignment.dto';
@@ -18,19 +17,19 @@ import { TrainingAssignmentsService } from './training-assignments.service';
 type JwtReq = { user: { userId: number; role_name: string } };
 
 @Controller('training-assignments')
-@UseGuards(AuthGuard('jwt'), BusinessRoleGuard)
+@UseGuards(BusinessRoleGuard)
 @BusinessRoles()
 export class TrainingAssignmentsController {
   constructor(private readonly assignments: TrainingAssignmentsService) {}
 
   @Get()
-  list() {
-    return this.assignments.list();
+  list(@Req() req: JwtReq) {
+    return this.assignments.list(req.user);
   }
 
   @Get(':id')
-  findOne(@Param('id', ParseIntPipe) id: number) {
-    return this.assignments.getOne(id);
+  findOne(@Param('id', ParseIntPipe) id: number, @Req() req: JwtReq) {
+    return this.assignments.getOne(id, req.user);
   }
 
   @Post()
@@ -42,7 +41,7 @@ export class TrainingAssignmentsController {
   }
 
   @Delete(':id')
-  remove(@Param('id', ParseIntPipe) id: number) {
-    return this.assignments.remove(id);
+  remove(@Param('id', ParseIntPipe) id: number, @Req() req: JwtReq) {
+    return this.assignments.remove(id, req.user);
   }
 }

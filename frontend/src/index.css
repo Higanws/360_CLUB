@@ -1,4 +1,6 @@
 /* Paleta: grises, negros y rojos — modo claro / oscuro (data-theme) */
+@import './styles/mm-data-table.css';
+@import './styles/mm-forms.css';
 
 :root[data-theme='light'] {
   color-scheme: light;
@@ -591,21 +593,11 @@ code {
   margin-bottom: 0.45rem;
 }
 
-.mp-routine-line-input {
+.mp-routine-line-title {
   flex: 1 1 120px;
   min-width: 0;
-  padding: 0.35rem 0.45rem;
-  border-radius: 6px;
-  border: 1px solid var(--border);
-  background: var(--bg-page);
-  color: inherit;
-  font: inherit;
-  font-size: 0.85rem;
-}
-
-.mp-routine-remove {
-  font-size: 0.78rem;
-  padding: 0.25rem 0.45rem;
+  font-size: 0.9rem;
+  line-height: 1.35;
 }
 
 .mp-routine-weight {
@@ -986,15 +978,11 @@ code {
   color: var(--text-muted);
 }
 
-.members-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.35rem;
-}
+/* Acciones de fila: usar <MmTableActions> o .mm-table-actions__inner (ver mm-data-table.css) */
 
 .btn-table {
   font-size: 0.75rem;
-  padding: 0.25rem 0.5rem;
+  padding: 0.35rem 0.55rem;
   border-radius: 6px;
   border: 1px solid var(--border);
   background: var(--bg-page);
@@ -1155,7 +1143,7 @@ code {
   padding: 0.45rem 0.55rem;
   border-radius: 6px;
   border: 1px solid var(--border);
-  background: var(--bg-page);
+  background-color: var(--bg-page);
   color: var(--text);
 }
 
@@ -1773,14 +1761,7 @@ code {
   margin-bottom: 1rem;
 }
 
-.pos-payment-field select {
-  padding: 0.55rem 0.65rem;
-  border-radius: 6px;
-  border: 1px solid var(--border);
-  background: var(--bg-page);
-  color: var(--text);
-  font-size: 1rem;
-}
+/* Select POS: ver mm-forms.css (.pos-payment-field select) */
 
 .pos-checkout-btn {
   width: 100%;
@@ -1935,12 +1916,12 @@ code {
   vertical-align: middle;
 }
 
-/* Flex dentro del <td>, no en el <td>: evita bordes desalineados entre columnas */
-.pos-stock-actions {
+.pos-stock-actions,
+.pos-stock-table__actions .mm-table-actions__inner {
   display: inline-flex;
   flex-wrap: nowrap;
   align-items: center;
-  gap: 0.4rem;
+  gap: var(--mm-table-actions-gap, 0.4rem);
   max-width: 100%;
 }
 
@@ -2352,7 +2333,7 @@ code {
   padding: 0.55rem 0.65rem;
   border-radius: 6px;
   border: 1px solid var(--border);
-  background: var(--bg-page);
+  background-color: var(--bg-page);
   color: var(--text);
 }
 
@@ -2418,7 +2399,7 @@ code {
   padding: 0.55rem 0.65rem;
   border-radius: 6px;
   border: 1px solid var(--border);
-  background: var(--bg-page);
+  background-color: var(--bg-page);
   color: var(--text);
 }
 

@@ -1,10 +1,13 @@
-import axios from 'axios';
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { api } from '../lib/api';
+import { MemberAvatar } from '../components/mm/MemberAvatar';
+import { MmTableActions } from '../components/mm/MmTableActions';
+import { PageLoading } from '../components/mm/PageLoading';
 import { routes } from '../config/member-management';
 import { memberPortalRoutes } from '../config/member-portal';
-import { useAuth } from '../context/AuthContext';
+import { useGestionAuth } from '../hooks/useGestionAuth';
+import { api } from '../lib/api';
+import { apiErrorStatus } from '../lib/is-api-error';
 
 type StaffPayload = {
   staff: Array<{
@@ -22,80 +25,42 @@ type StaffPayload = {
   };
 };
 
-const uploadBase = import.meta.env.VITE_UPLOAD_BASE as string | undefined;
-
-function StaffAvatar({
-  filename,
-  label,
-}: {
-  filename: string | null;
-  label: string;
-}) {
-  const [broken, setBroken] = useState(false);
-  const src =
-    filename && uploadBase
-      ? `${uploadBase.replace(/\/$/, '')}/${filename}`
-      : null;
-  if (src && !broken) {
-    return (
-      <img
-        className="members-photo"
-        src={src}
-        alt=""
-        onError={() => setBroken(true)}
-      />
-    );
-  }
-  const initials = label
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((w) => w[0]?.toUpperCase() ?? '')
-    .join('');
-  return (
-    <div className="members-photo members-photo--fallback" aria-hidden>
-      {initials || '?'}
-    </div>
-  );
-}
-
 export function StaffListPage() {
-  const { user, loading } = useAuth();
+  useGestionAuth();
   const navigate = useNavigate();
   const [data, setData] = useState<StaffPayload | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [loadingData, setLoadingData] = useState(true);
+
+  async function handleDelete(id: number) {
+    if (!confirm('¿Eliminar este miembro del personal?')) return;
+    try {
+      await api.delete(`/staff/${id}`);
+      const { data: d } = await api.get<StaffPayload>('/staff');
+      setData(d);
+      setError(null);
+    } catch {
+      setError('No se pudo eliminar.');
+    }
+  }
 
   useEffect(() => {
-    if (!loading && !user) {
-      navigate('/login', { replace: true });
-    }
-  }, [loading, user, navigate]);
-
-  useEffect(() => {
-    if (!user) return;
-    const r = user.role_name?.trim().toLowerCase() ?? '';
-    if (r === 'member') {
-      navigate(memberPortalRoutes.wellness, { replace: true });
-      return;
-    }
+    setLoadingData(true);
     api
       .get<StaffPayload>('/staff')
       .then(({ data: d }) => setData(d))
       .catch((e: unknown) => {
-        if (axios.isAxiosError(e) && e.response?.status === 403) {
+        if (apiErrorStatus(e) === 403) {
           navigate(memberPortalRoutes.wellness, { replace: true });
           return;
         }
         setError('No se pudo cargar el personal.');
-      });
-  }, [user, navigate]);
+      })
+      .finally(() => setLoadingData(false));
+  }, [navigate]);
 
-  if (loading || !user) {
-    return (
-      <div className="mm-page">
-        <p className="muted">Cargando…</p>
-      </div>
-    );
+  if (loadingData && !data) {
+    return <PageLoading message="Cargando personal…" />;
   }
 
   return (
@@ -114,7 +79,7 @@ export function StaffListPage() {
 
       {error ? <p className="login-error">{error}</p> : null}
 
-      <section className="members-panel">
+      <section className="members-panel mm-data-panel">
         <div className="members-table-wrap">
           <table className="members-table">
             <thead>
@@ -136,7 +101,7 @@ export function StaffListPage() {
                 return (
                   <tr key={row.id}>
                     <td>
-                      <StaffAvatar
+                      <MemberAvatar
                         filename={row.image}
                         label={name || '?'}
                       />
@@ -145,7 +110,7 @@ export function StaffListPage() {
                     <td>{row.club_role_name ?? '—'}</td>
                     <td>{row.email ?? '—'}</td>
                     <td>{row.mobile ?? '—'}</td>
-                    <td className="members-actions">
+                    <MmTableActions label={`Acciones de ${name || 'personal'}`}>
                       <Link
                         to={routes.personalDetail(row.id)}
                         className="btn-table btn-table--link"
@@ -169,7 +134,7 @@ export function StaffListPage() {
                           </button>
                         </>
                       ) : null}
-                    </td>
+                    </MmTableActions>
                   </tr>
                 );
               })}
@@ -182,16 +147,4 @@ export function StaffListPage() {
       </section>
     </div>
   );
-
-  async function handleDelete(id: number) {
-    if (!confirm('¿Eliminar este miembro del personal?')) return;
-    try {
-      await api.delete(`/staff/${id}`);
-      const { data: d } = await api.get<StaffPayload>('/staff');
-      setData(d);
-      setError(null);
-    } catch {
-      setError('No se pudo eliminar.');
-    }
-  }
 }

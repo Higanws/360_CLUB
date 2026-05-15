@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../../lib/api';
 import { extractApiMessage } from '../../lib/extract-api-message';
@@ -78,9 +78,7 @@ function buildDefaultSnapshot(ctx: TrainingContext): Record<string, unknown> {
   };
 }
 
-function parseDays(
-  snap: Record<string, unknown>,
-): Record<DayKey, WeekRow[]> {
+function parseDays(snap: Record<string, unknown>): Record<DayKey, WeekRow[]> {
   const raw = snap.days;
   const out: Record<DayKey, WeekRow[]> = {
     mon: [],
@@ -128,9 +126,6 @@ export function MemberWeeklyRoutinePage() {
     null,
   );
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [saveError, setSaveError] = useState<string | null>(null);
-  const [saveOk, setSaveOk] = useState(false);
-  const [saving, setSaving] = useState(false);
 
   const preview = isPortalPreviewRole(user?.role_name);
   const pickedId =
@@ -193,66 +188,6 @@ export function MemberWeeklyRoutinePage() {
 
   const hasAssignment = Boolean(ctx?.assignment);
 
-  const snapshotPayload = useMemo(() => {
-    if (!daysState || !ctx?.assignment) {
-      return null;
-    }
-    return {
-      days: DAY_KEYS.reduce(
-        (acc, k) => {
-          acc[k] = daysState[k];
-          return acc;
-        },
-        {} as Record<string, WeekRow[]>,
-      ),
-      routineTitle: ctx.assignment.routine_title,
-      assignmentId: ctx.assignment.id,
-    };
-  }, [daysState, ctx]);
-
-  async function handleSave() {
-    if (!snapshotPayload || !weekStart) return;
-    setSaving(true);
-    setSaveError(null);
-    setSaveOk(false);
-    try {
-      await api.patch('/member-wellness/weekly-routine', {
-        week_start: weekStart,
-        routine_snapshot_json: snapshotPayload,
-        ...(preview && pickedId !== undefined ? { member_id: pickedId } : {}),
-      });
-      setSaveOk(true);
-    } catch (e: unknown) {
-      setSaveError(extractApiMessage(e) || 'No se pudo guardar.');
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  function updateTitle(day: DayKey, index: number, title: string) {
-    setDaysState((prev) => {
-      if (!prev) return prev;
-      const next = { ...prev, [day]: [...prev[day]] };
-      const row = next[day][index];
-      if (row) next[day][index] = { ...row, title };
-      return next;
-    });
-  }
-
-  function removeRow(day: DayKey, index: number) {
-    setDaysState((prev) => {
-      if (!prev) return prev;
-      const next = { ...prev, [day]: prev[day].filter((_, i) => i !== index) };
-      return next;
-    });
-  }
-
-  function restoreTemplate() {
-    if (!ctx) return;
-    setDaysState(parseDays(buildDefaultSnapshot(ctx)));
-    setSaveOk(false);
-  }
-
   if (loading || !user) {
     return (
       <section className="mp-wellness-section">
@@ -267,7 +202,7 @@ export function MemberWeeklyRoutinePage() {
         <h2 className="mp-wellness-section-title">Rutina de la semana</h2>
         <p className="muted">
           Usa la barra «Vista de socio» arriba para elegir un miembro. Verás la misma rutina
-          asignada y el plan semanal que él puede editar desde el portal.
+          en solo lectura que en el portal del socio.
         </p>
       </section>
     );
@@ -282,7 +217,7 @@ export function MemberWeeklyRoutinePage() {
       ) : !hasAssignment ? (
         <p className="muted">
           Todavía no tienes una rutina asignada. Cuando el personal del club vincule una rutina
-          contigo, podrás ver los ejercicios y guardar tu plan semanal aquí.
+          contigo, podrás consultarla aquí.
         </p>
       ) : (
         <>
@@ -295,21 +230,10 @@ export function MemberWeeklyRoutinePage() {
               </>
             ) : null}
           </p>
-          <div className="mp-routine-actions">
-            <button type="button" className="btn-outline" onClick={() => restoreTemplate()}>
-              Restaurar desde plantilla
-            </button>
-            <button
-              type="button"
-              className="btn-primary"
-              disabled={saving || !daysState}
-              onClick={() => void handleSave()}
-            >
-              {saving ? 'Guardando…' : 'Guardar semana'}
-            </button>
-          </div>
-          {saveError ? <p className="login-error">{saveError}</p> : null}
-          {saveOk ? <p className="muted">Cambios guardados.</p> : null}
+          <p className="muted nutrition-cal-legend">
+            Vista solo lectura. La rutina la define y actualiza el personal del club desde
+            gestión.
+          </p>
           <div className="mp-routine-week">
             {DAY_KEYS.map((day) => (
               <div key={day} className="mp-routine-day">
@@ -317,25 +241,12 @@ export function MemberWeeklyRoutinePage() {
                 <ul className="mp-routine-list">
                   {(daysState?.[day] ?? []).map((row, idx) => (
                     <li key={`${day}-${row.routine_line_id}-${idx}`} className="mp-routine-line">
-                      <input
-                        type="text"
-                        className="mp-routine-line-input"
-                        value={row.title}
-                        onChange={(e) => updateTitle(day, idx, e.target.value)}
-                        aria-label={`Ejercicio ${idx + 1} el ${DAY_LABELS[day]}`}
-                      />
+                      <span className="mp-routine-line-title">{row.title}</span>
                       {row.weight_kg != null && Number.isFinite(row.weight_kg) ? (
                         <span className="muted mp-routine-weight">
                           {row.weight_kg} kg
                         </span>
                       ) : null}
-                      <button
-                        type="button"
-                        className="btn-outline mp-routine-remove"
-                        onClick={() => removeRow(day, idx)}
-                      >
-                        Quitar
-                      </button>
                     </li>
                   ))}
                 </ul>

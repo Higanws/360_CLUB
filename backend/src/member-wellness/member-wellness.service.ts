@@ -17,19 +17,9 @@ import {
   isMondayYmdInMadrid,
   madridMondayWeekStart,
 } from './madrid-week.util';
-import type { PatchWeeklyRoutineDto } from './dto/patch-weekly-routine.dto';
-
-function normRole(r: string | null | undefined): string {
-  return (r ?? '').trim().toLowerCase();
-}
-
-function isoDateOnly(v: Date | string | null | undefined): string | null {
-  if (v == null) return null;
-  if (v instanceof Date) return v.toISOString().slice(0, 10);
-  const s = String(v);
-  return s.length >= 10 ? s.slice(0, 10) : s;
-}
-
+import { normalizeClubRole } from '../shared/domain/club/club-roles';
+import { assertStaffOwnsMember } from '../shared/application/security/staff-member-scope';
+import { toIsoDateOnly } from '../shared/domain/shared/iso-date';
 export type NutritionPlanPayload = {
   member_id: number;
   first_name: string | null;
@@ -53,8 +43,6 @@ type JwtActor = { userId: number; role_name: string };
 
 @Injectable()
 export class MemberWellnessService {
-  private static readonly SNAPSHOT_JSON_MAX = 96_000;
-
   constructor(
     @InjectRepository(GeneralSetting)
     private readonly settings: Repository<GeneralSetting>,
@@ -78,14 +66,7 @@ export class MemberWellnessService {
     actor: JwtActor,
     member: GymMember,
   ): Promise<void> {
-    if (normRole(actor.role_name) !== 'staff_member') return;
-    const row = await this.settingsRow();
-    const ownOnly = row?.staff_can_view_own_member === 1;
-    if (ownOnly && member.assign_staff_mem !== actor.userId) {
-      throw new ForbiddenException(
-        'No tienes acceso a este socio (no está asignado a ti).',
-      );
-    }
+    assertStaffOwnsMember(actor, member);
   }
 
   /**
@@ -96,14 +77,23 @@ export class MemberWellnessService {
     actor: JwtActor,
     memberIdParam: number | undefined,
   ): Promise<GymMember> {
-    const role = normRole(actor.role_name);
+    const role = normalizeClubRole(actor.role_name);
     if (role !== 'member' && role !== 'administrator' && role !== 'staff_member') {
       throw new ForbiddenException('No autorizado.');
     }
 
     if (role === 'member') {
+      if (
+        memberIdParam != null &&
+        Number.isFinite(memberIdParam) &&
+        memberIdParam !== actor.userId
+      ) {
+        throw new ForbiddenException(
+          'No puedes consultar datos de otro socio.',
+        );
+      }
       const m = await this.members.findOne({ where: { id: actor.userId } });
-      if (!m || normRole(m.role_name) !== 'member') {
+      if (!m || normalizeClubRole(m.role_name) !== 'member') {
         throw new NotFoundException('Socio no encontrado.');
       }
       return m;
@@ -120,7 +110,7 @@ export class MemberWellnessService {
     }
 
     const m = await this.members.findOne({ where: { id: memberIdParam } });
-    if (!m || normRole(m.role_name) !== 'member') {
+    if (!m || normalizeClubRole(m.role_name) !== 'member') {
       throw new NotFoundException('Socio no encontrado.');
     }
 
@@ -159,8 +149,8 @@ export class MemberWellnessService {
         member_id: m.id,
         first_name: m.first_name,
         last_name: m.last_name,
-        valid_from: isoDateOnly(plan.valid_from as Date),
-        valid_to: isoDateOnly(plan.valid_to as Date),
+        valid_from: toIsoDateOnly(plan.valid_from as Date),
+        valid_to: toIsoDateOnly(plan.valid_to as Date),
         schedule_slots,
       },
     };
@@ -263,46 +253,4 @@ export class MemberWellnessService {
     };
   }
 
-  async patchWeeklyRoutine(
-    actor: JwtActor,
-    dto: PatchWeeklyRoutineDto,
-  ): Promise<{
-    week_start: string;
-    routine_snapshot_json: Record<string, unknown>;
-    updated_at: string;
-  }> {
-    const target = await this.resolveTargetMember(actor, dto.member_id);
-    const week_start = dto.week_start.trim();
-    if (!isMondayYmdInMadrid(week_start)) {
-      throw new BadRequestException(
-        'week_start debe ser un lunes (calendario Europe/Madrid).',
-      );
-    }
-    const json = JSON.stringify(dto.routine_snapshot_json);
-    if (json.length > MemberWellnessService.SNAPSHOT_JSON_MAX) {
-      throw new BadRequestException('routine_snapshot_json demasiado grande.');
-    }
-
-    let row = await this.weeklyRows.findOne({
-      where: { member_id: target.id, week_start },
-    });
-    if (!row) {
-      row = this.weeklyRows.create({
-        member_id: target.id,
-        week_start,
-        routine_snapshot_json: dto.routine_snapshot_json,
-      });
-    } else {
-      row.routine_snapshot_json = dto.routine_snapshot_json;
-    }
-    row = await this.weeklyRows.save(row);
-    return {
-      week_start,
-      routine_snapshot_json: dto.routine_snapshot_json,
-      updated_at:
-        row.updated_at instanceof Date
-          ? row.updated_at.toISOString()
-          : String(row.updated_at),
-    };
-  }
 }

@@ -1,16 +1,26 @@
 /**
  * Caso de uso de socios: solo DML vía TypeORM. Las tablas siguen el modelo MySQL real;
- * DDL opcional del asistente: `database/schema/schema_mysql.sql` (MVP).
+ * Esquema MVP: `backend/database/schema/schema_mysql.sql`; seed demo en `database/seed/seed_mvp.sql`.
  */
 import {
   ConflictException,
   ForbiddenException,
+  Inject,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import * as bcrypt from 'bcrypt';
 import { Repository } from 'typeorm';
+import { normalizeClubRole } from '../shared/domain/club/club-roles';
+import {
+  assertStaffOwnsMember,
+  staffMustUseOwnMembersOnly,
+} from '../shared/application/security/staff-member-scope';
+import { toIsoDateOnly } from '../shared/domain/shared/iso-date';
+import {
+  PASSWORD_HASHER,
+  type PasswordHasher,
+} from '../shared/application/ports/password-hasher.port';
 import { ClassSchedule } from '../entities/class-schedule.entity';
 import { GeneralSetting } from '../entities/general-setting.entity';
 import { GymMemberClass } from '../entities/gym-member-class.entity';
@@ -82,13 +92,6 @@ export type SafeMemberDetail = {
   physical_fat_percent: number | null;
 };
 
-function isoDateOnly(v: Date | string | null | undefined): string | null {
-  if (v == null) return null;
-  if (v instanceof Date) return v.toISOString().slice(0, 10);
-  const s = String(v);
-  return s.length >= 10 ? s.slice(0, 10) : s;
-}
-
 function numFromDecColumn(s: string | null | undefined): number | null {
   if (s == null || s === '') return null;
   const n = parseFloat(s);
@@ -100,10 +103,6 @@ function parseDecimalDto(v: unknown): string | null {
   const n = typeof v === 'number' ? v : parseFloat(String(v));
   if (!Number.isFinite(n)) return null;
   return n.toFixed(2);
-}
-
-function normRole(r: string | null | undefined): string {
-  return (r ?? '').trim().toLowerCase();
 }
 
 @Injectable()
@@ -121,6 +120,7 @@ export class MembersService {
     private readonly membershipPayment: Repository<MembershipPayment>,
     @InjectRepository(ClassSchedule)
     private readonly classSchedule: Repository<ClassSchedule>,
+    @Inject(PASSWORD_HASHER) private readonly passwordHasher: PasswordHasher,
   ) {}
 
   private async settingsRow(): Promise<GeneralSetting | null> {
@@ -130,7 +130,7 @@ export class MembersService {
   }
 
   private assertBusinessRole(role_name: string): void {
-    const r = normRole(role_name);
+    const r = normalizeClubRole(role_name);
     if (r !== 'administrator' && r !== 'staff_member') {
       throw new ForbiddenException(
         'El módulo de socios es solo para administración o staff del club.',
@@ -171,18 +171,7 @@ export class MembersService {
     member: GymMember,
   ): Promise<void> {
     this.assertBusinessRole(actor.role_name);
-    const r = normRole(actor.role_name);
-    if (r === 'administrator') return;
-
-    const s = await this.settingsRow();
-    const ownOnly = s?.staff_can_view_own_member === 1;
-    if (ownOnly) {
-      if (member.assign_staff_mem !== actor.userId) {
-        throw new ForbiddenException(
-          'No puedes gestionar socios que no tienes asignados.',
-        );
-      }
-    }
+    assertStaffOwnsMember(actor, member);
   }
 
   private async assertUsernameAvailable(
@@ -237,7 +226,7 @@ export class MembersService {
       first_name: m.first_name,
       last_name: m.last_name,
       gender: m.gender,
-      birth_date: isoDateOnly(m.birth_date as Date),
+      birth_date: toIsoDateOnly(m.birth_date as Date),
       email: m.email,
       username: m.username,
       mobile: m.mobile,
@@ -250,12 +239,12 @@ export class MembersService {
       assign_staff_mem: m.assign_staff_mem,
       selected_membership: m.selected_membership,
       membership_status: m.membership_status,
-      membership_valid_from: isoDateOnly(m.membership_valid_from as Date),
-      membership_valid_to: isoDateOnly(m.membership_valid_to as Date),
-      inquiry_date: isoDateOnly(m.inquiry_date as Date),
-      trial_end_date: isoDateOnly(m.trial_end_date as Date),
-      first_pay_date: isoDateOnly(m.first_pay_date as Date),
-      created_date: isoDateOnly(m.created_date as Date),
+      membership_valid_from: toIsoDateOnly(m.membership_valid_from as Date),
+      membership_valid_to: toIsoDateOnly(m.membership_valid_to as Date),
+      inquiry_date: toIsoDateOnly(m.inquiry_date as Date),
+      trial_end_date: toIsoDateOnly(m.trial_end_date as Date),
+      first_pay_date: toIsoDateOnly(m.first_pay_date as Date),
+      created_date: toIsoDateOnly(m.created_date as Date),
       assign_class_ids,
       physical_weight_kg: numFromDecColumn(m.physical_weight_kg),
       physical_height_cm: numFromDecColumn(m.physical_height_cm),
@@ -271,7 +260,7 @@ export class MembersService {
     userId: number;
     role_name: string;
   }): Promise<MembersListResponse> {
-    const role = normRole(payload.role_name);
+    const role = normalizeClubRole(payload.role_name);
     if (role === 'member') {
       throw new ForbiddenException(
         'Los socios no tienen acceso al módulo de gestión. Contacta con recepción.',
@@ -301,10 +290,7 @@ export class MembersService {
     if (role === 'administrator') {
       /* todos */
     } else if (role === 'staff_member') {
-      const ownOnly = settingRow?.staff_can_view_own_member === 1;
-      if (ownOnly) {
-        qb.andWhere('m.assign_staff_mem = :uid', { uid });
-      }
+      qb.andWhere('m.assign_staff_mem = :uid', { uid });
     }
 
     const rows = await qb
@@ -320,8 +306,8 @@ export class MembersService {
       last_name: r.last_name,
       image: r.image,
       membership_status: r.membership_status,
-      membership_valid_from: isoDateOnly(r.membership_valid_from),
-      membership_valid_to: isoDateOnly(r.membership_valid_to),
+      membership_valid_from: toIsoDateOnly(r.membership_valid_from),
+      membership_valid_to: toIsoDateOnly(r.membership_valid_to),
     }));
 
     return {
@@ -330,7 +316,7 @@ export class MembersService {
       members: mapped,
       meta: {
         role_name: payload.role_name,
-        can_add_member: true,
+        can_add_member: role === 'administrator',
         show_status_column: role === 'administrator',
         date_format: settingRow?.date_format ?? null,
       },
@@ -376,7 +362,7 @@ export class MembersService {
   ): Promise<{ member: SafeMemberDetail }> {
     this.assertBusinessRole(actor.role_name);
     const m = await this.members.findOne({ where: { id } });
-    if (!m || normRole(m.role_name) !== 'member') {
+    if (!m || normalizeClubRole(m.role_name) !== 'member') {
       throw new NotFoundException('Socio no encontrado.');
     }
     await this.assertCanManageMember(actor, m);
@@ -394,13 +380,18 @@ export class MembersService {
     dto: CreateMemberDto,
     actor: { userId: number; role_name: string },
   ): Promise<{ member: SafeMemberDetail }> {
+    if (staffMustUseOwnMembersOnly(actor)) {
+      throw new ForbiddenException(
+        'Solo el administrador puede dar de alta socios.',
+      );
+    }
     this.assertBusinessRole(actor.role_name);
 
     await this.assertUsernameAvailable(dto.username);
     await this.assertDniAvailable(dto.di_dni_type, dto.di_dni_number);
 
     const membership_status = this.memberTypeToStatus('Member');
-    const hash = await bcrypt.hash(dto.password, 10);
+    const hash = await this.passwordHasher.hash(dto.password);
 
     const row = this.members.create({
       role_name: 'member',
@@ -511,7 +502,7 @@ export class MembersService {
   ): Promise<{ member: SafeMemberDetail }> {
     this.assertBusinessRole(actor.role_name);
     const m = await this.members.findOne({ where: { id } });
-    if (!m || normRole(m.role_name) !== 'member') {
+    if (!m || normalizeClubRole(m.role_name) !== 'member') {
       throw new NotFoundException('Socio no encontrado.');
     }
     await this.assertCanManageMember(actor, m);
@@ -528,7 +519,7 @@ export class MembersService {
     }
 
     if (dto.password !== undefined && dto.password.length > 0) {
-      m.password = await bcrypt.hash(dto.password, 10);
+      m.password = await this.passwordHasher.hash(dto.password);
     }
 
     if (dto.first_name !== undefined) m.first_name = dto.first_name.trim();
@@ -596,7 +587,7 @@ export class MembersService {
   ): Promise<{ ok: true }> {
     this.assertBusinessRole(actor.role_name);
     const m = await this.members.findOne({ where: { id } });
-    if (!m || normRole(m.role_name) !== 'member') {
+    if (!m || normalizeClubRole(m.role_name) !== 'member') {
       throw new NotFoundException('Socio no encontrado.');
     }
     await this.assertCanManageMember(actor, m);

@@ -10,6 +10,7 @@ import { GeneralSetting } from '../entities/general-setting.entity';
 import { GymMember } from '../entities/gym-member.entity';
 import { MembershipPayment } from '../entities/membership-payment.entity';
 import { Membership } from '../entities/membership.entity';
+import { normalizeClubRole } from '../shared/domain/club/club-roles';
 import { ManualMembershipPaymentDto } from './dto/manual-membership-payment.dto';
 
 export type ExpiringPaymentRow = {
@@ -32,10 +33,6 @@ function padIsoDate(d: Date): string {
   const m = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');
   return `${y}-${m}-${day}`;
-}
-
-function normRole(r: string | null | undefined): string {
-  return (r ?? '').trim().toLowerCase();
 }
 
 @Injectable()
@@ -62,7 +59,7 @@ export class MembershipPaymentsService {
     userId: number;
     role_name: string;
   }): Promise<{ title: string; subtitle: string; rows: ExpiringPaymentRow[] }> {
-    const r = normRole(actor.role_name);
+    const r = normalizeClubRole(actor.role_name);
     if (r !== 'administrator' && r !== 'staff_member') {
       throw new ForbiddenException(
         'Solo administración o staff puede ver cobros de membresía.',
@@ -151,7 +148,7 @@ export class MembershipPaymentsService {
     members: { id: number; label: string }[];
     memberships: { id: number; label: string | null; amount: number | null }[];
   }> {
-    const r = normRole(actor.role_name);
+    const r = normalizeClubRole(actor.role_name);
     if (r !== 'administrator' && r !== 'staff_member') {
       throw new ForbiddenException(
         'Solo administración o staff puede registrar cobros.',
@@ -195,7 +192,7 @@ export class MembershipPaymentsService {
     dto: ManualMembershipPaymentDto,
     actor: { userId: number; role_name: string },
   ): Promise<{ ok: true; mp_id: number }> {
-    const r = normRole(actor.role_name);
+    const r = normalizeClubRole(actor.role_name);
     if (r !== 'administrator' && r !== 'staff_member') {
       throw new ForbiddenException(
         'Solo administración o staff puede registrar cobros.',
@@ -205,7 +202,7 @@ export class MembershipPaymentsService {
     const member = await this.members.findOne({
       where: { id: dto.member_id },
     });
-    if (!member || normRole(member.role_name) !== 'member') {
+    if (!member || normalizeClubRole(member.role_name) !== 'member') {
       throw new NotFoundException('Socio no encontrado.');
     }
 
@@ -266,7 +263,7 @@ export class MembershipPaymentsService {
     mpId: number,
     actor: { userId: number; role_name: string },
   ): Promise<{ ok: true }> {
-    const r = normRole(actor.role_name);
+    const r = normalizeClubRole(actor.role_name);
     if (r !== 'administrator' && r !== 'staff_member') {
       throw new ForbiddenException(
         'Solo administración o staff puede actualizar cobros.',
@@ -280,7 +277,7 @@ export class MembershipPaymentsService {
       const member = await this.members.findOne({
         where: { id: mp.member_id },
       });
-      if (member && normRole(member.role_name) === 'member') {
+      if (member && normalizeClubRole(member.role_name) === 'member') {
         const settingRow = await this.settingsRow();
         const ownOnly =
           r === 'staff_member' && settingRow?.staff_can_view_own_member === 1;

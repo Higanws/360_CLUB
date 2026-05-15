@@ -19,7 +19,7 @@ import { backendDataDirectory } from './backend-root';
  * 3. Reinicia el backend → verás de nuevo el asistente en el navegador.
  *    (En este repo puedes usar `.\club360.ps1 -ResetInstall` desde `Recreacion_react` para los pasos 1–2.)
  * El asistente hace `DROP` de **todas** las vistas y tablas (cualquier dato o esquema antiguo),
- * comprueba **0 tablas y 0 vistas**, ejecuta `prisma migrate deploy` (baseline con **población inicial**)
+ * comprueba **0 tablas y 0 vistas**, aplica DDL (`schema_mysql.sql`) + `seed_mvp.sql`
  * y valida que esa población exista antes de fijar el administrador.
  */
 function candidateInstallDataDirs(): string[] {

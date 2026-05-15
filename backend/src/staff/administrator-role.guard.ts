@@ -5,7 +5,7 @@ import {
   Injectable,
 } from '@nestjs/common';
 
-/** Solo el rol administrador puede dar de alta/editar/baja personal. */
+/** Solo rol `administrator` (POS, cobros, altas de socios, personal, dashboard, recepción). */
 @Injectable()
 export class AdministratorRoleGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {
@@ -15,7 +15,7 @@ export class AdministratorRoleGuard implements CanActivate {
     const raw = (req.user?.role_name ?? '').trim().toLowerCase();
     if (raw !== 'administrator') {
       throw new ForbiddenException(
-        'Solo el administrador puede crear, editar o eliminar personal del club.',
+        'Esta función es solo para administradores del club.',
       );
     }
     return true;

@@ -224,6 +224,7 @@ export function PosSellPage() {
           <label className="pos-payment-field">
             <span className="muted">Método de pago</span>
             <select
+              className="mm-select"
               value={paymentMethod}
               onChange={(e) => setPaymentMethod(e.target.value)}
             >

@@ -3,36 +3,8 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { ThemeToggle } from '../components/ThemeToggle';
 import { api } from '../lib/api';
+import { extractApiMessage } from '../lib/extract-api-message';
 import { useAuth } from '../context/AuthContext';
-
-function extractApiMessage(err: unknown): string {
-  if (
-    err &&
-    typeof err === 'object' &&
-    'response' in err &&
-    err.response &&
-    typeof err.response === 'object' &&
-    'data' in err.response &&
-    err.response.data &&
-    typeof err.response.data === 'object'
-  ) {
-    const data = err.response.data as {
-      message?: unknown;
-      error?: unknown;
-      statusCode?: number;
-    };
-    if (typeof data.error === 'string' && data.error.trim()) {
-      return data.error;
-    }
-    const m = data.message;
-    if (Array.isArray(m)) return m.map(String).join(', ');
-    if (typeof m === 'string') return m;
-    if (m != null && typeof m === 'object') {
-      return JSON.stringify(m);
-    }
-  }
-  return '';
-}
 
 type Branding = {
   name: string;

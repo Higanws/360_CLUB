@@ -11,6 +11,13 @@ import {
 import { memberPortalAbsoluteUrl, memberPortalNewTab, memberPortalRoutes } from '../config/member-portal';
 import { api } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
+import {
+  canStaffAccessGestionPath,
+  isAdministrator,
+  isBusinessUser,
+  isStaff,
+  staffDefaultRoute,
+} from '../lib/role-access';
 
 const NAV_COLLAPSE_KEY = 'mm_nav_collapsed';
 
@@ -54,8 +61,10 @@ export function MemberManagementLayout() {
   const [branding, setBranding] = useState<Branding | null>(null);
   const [logoBroken, setLogoBroken] = useState(false);
 
-  const r = user?.role_name?.trim().toLowerCase() ?? '';
-  const isBusiness = r === 'administrator' || r === 'staff_member';
+  const r = user?.role_name ?? '';
+  const isBusiness = isBusinessUser(r);
+  const isAdmin = isAdministrator(r);
+  const isStaffUser = isStaff(r);
 
   const uploadBase = import.meta.env.VITE_UPLOAD_BASE as string | undefined;
 
@@ -115,21 +124,30 @@ export function MemberManagementLayout() {
     setLogoBroken(false);
   }, [logoSrc]);
 
+  useEffect(() => {
+    if (loading) return;
+    if (!user) {
+      navigate('/login', { replace: true });
+      return;
+    }
+    if (!isBusiness) {
+      navigate(memberPortalRoutes.wellness, { replace: true });
+      return;
+    }
+    if (isStaffUser && !canStaffAccessGestionPath(location.pathname)) {
+      navigate(staffDefaultRoute(), { replace: true });
+    }
+  }, [loading, user, isBusiness, isStaffUser, location.pathname, navigate]);
+
   if (loading) {
     return (
-      <div className="home-shell">
+      <div className="home-shell" role="status" aria-live="polite" aria-busy="true">
         <p className="muted">Cargando…</p>
       </div>
     );
   }
 
-  if (!user) {
-    navigate('/login', { replace: true });
-    return null;
-  }
-
-  if (!isBusiness) {
-    navigate(memberPortalRoutes.wellness, { replace: true });
+  if (!user || !isBusiness) {
     return null;
   }
 
@@ -175,29 +193,45 @@ export function MemberManagementLayout() {
 
         <aside className="mm-sidebar" aria-label="Navegación de gestión">
           <div className="mm-sidebar-block">
-            <NavLink
-              to={routes.dashboard}
-              className={({ isActive }) =>
-                isActive
-                  ? 'mm-sidebar-flat-link mm-sidebar-flat-link--active'
-                  : 'mm-sidebar-flat-link'
-              }
-              end
-            >
-              <span className="mm-sidebar-toggle-icon" aria-hidden>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-                  <path
-                    d="M4 19V5M4 19h16M4 19h4M8 5v14M8 5h12v14H8V5z"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-              </span>
-              <span className="mm-sidebar-flat-link-label">Dashboard</span>
-            </NavLink>
+            {isAdmin ? (
+              <NavLink
+                to={routes.dashboard}
+                className={({ isActive }) =>
+                  isActive
+                    ? 'mm-sidebar-flat-link mm-sidebar-flat-link--active'
+                    : 'mm-sidebar-flat-link'
+                }
+                end
+              >
+                <span className="mm-sidebar-toggle-icon" aria-hidden>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                    <path
+                      d="M4 19V5M4 19h16M4 19h4M8 5v14M8 5h12v14H8V5z"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </span>
+                <span className="mm-sidebar-flat-link-label">Dashboard</span>
+              </NavLink>
+            ) : (
+              <NavLink
+                to={routes.rutinasAsignaciones}
+                className={({ isActive }) =>
+                  isActive
+                    ? 'mm-sidebar-flat-link mm-sidebar-flat-link--active'
+                    : 'mm-sidebar-flat-link'
+                }
+                end
+              >
+                <span className="mm-sidebar-flat-link-label">Mis asignaciones</span>
+              </NavLink>
+            )}
 
+            {isAdmin ? (
+            <>
             <div className="mm-sidebar-section mm-sidebar-section--affiliation">
               <button
                 type="button"
@@ -379,6 +413,8 @@ export function MemberManagementLayout() {
                 </nav>
               ) : null}
             </div>
+            </>
+            ) : null}
           </div>
 
           <div className="mm-sidebar-block">
@@ -592,6 +628,7 @@ export function MemberManagementLayout() {
             </div>
           </div>
 
+          {isAdmin ? (
           <div className="mm-sidebar-block">
             <div className="mm-sidebar-section mm-sidebar-section--access-control">
               <button
@@ -660,7 +697,9 @@ export function MemberManagementLayout() {
               ) : null}
             </div>
           </div>
+          ) : null}
 
+          {isAdmin ? (
           <div className="mm-sidebar-block">
             <div className="mm-sidebar-section mm-sidebar-section--portal-socio">
               <button
@@ -723,6 +762,7 @@ export function MemberManagementLayout() {
               ) : null}
             </div>
           </div>
+          ) : null}
         </aside>
       </div>
 

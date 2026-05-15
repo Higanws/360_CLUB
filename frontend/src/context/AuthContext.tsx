@@ -7,7 +7,7 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import { api, setAuthHeader } from '../lib/api';
+import { api, SESSION_EXPIRED_EVENT, setAuthHeader } from '../lib/api';
 
 const STORAGE_ACCESS = 'club360_access';
 const STORAGE_REFRESH = 'club360_refresh';
@@ -129,6 +129,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     void bootstrap();
   }, [bootstrap]);
+
+  useEffect(() => {
+    const onExpired = () => logout();
+    window.addEventListener(SESSION_EXPIRED_EVENT, onExpired);
+    return () => window.removeEventListener(SESSION_EXPIRED_EVENT, onExpired);
+  }, [logout]);
 
   /** Si otra pestaña borra los tokens (cerrar sesión), esta pestaña deja de estar autenticada. */
   useEffect(() => {

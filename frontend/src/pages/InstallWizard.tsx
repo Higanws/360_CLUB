@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { api, apiUrl } from '../lib/api';
+import { extractApiMessage } from '../lib/extract-api-message';
 import { ThemeToggle } from '../components/ThemeToggle';
 
 type Step = 0 | 1 | 2 | 3 | 4;
@@ -22,30 +23,12 @@ function parseMysqlHostPort(raw: string): { host: string; port: number } {
   return { host: t, port: 3306 };
 }
 
-function extractApiMessage(err: unknown): string {
-  if (
-    err &&
-    typeof err === 'object' &&
-    'response' in err &&
-    err.response &&
-    typeof err.response === 'object' &&
-    'data' in err.response &&
-    err.response.data &&
-    typeof err.response.data === 'object' &&
-    'message' in err.response.data
-  ) {
-    const m = (err.response.data as { message: unknown }).message;
-    if (Array.isArray(m)) return m.join(', ');
-    if (typeof m === 'string') return m;
-  }
-  return '';
-}
-
 const INSTALL_STEP_LABEL: Record<string, string> = {
   validate: 'Validación de BD',
   connect: 'Conexión MySQL',
   drop_tables: 'Vaciar tablas',
-  prisma_migrate: 'Esquema (Prisma baseline)',
+  schema: 'Esquema SQL',
+  seed: 'Datos demo',
   reconnect: 'Reconexión',
   truncate_seed: 'Seed y truncado MVP',
   admin: 'Usuario administrador',
@@ -486,8 +469,9 @@ export function InstallWizard() {
               <h1>Confirmar</h1>
               <p className="muted">
                 Se <strong>eliminarán todas las tablas</strong> de esta base (incluido el historial de
-                Prisma). Luego <code>prisma migrate deploy</code> crea el esquema MVP desde una única
-                migración baseline en <code>backend/prisma/migrations</code> (alineada con el código).
+                Prisma). Luego aplica el esquema SQL en{' '}
+                <code>backend/database/schema/schema_mysql.sql</code> y los datos demo en{' '}
+                <code>backend/database/seed/seed_mvp.sql</code>.
                 Después se vacían las tablas MVP, se importa el <strong>seed SQL</strong> de demo y se
                 fija el administrador.
               </p>

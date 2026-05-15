@@ -5,12 +5,18 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
+  Inject,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import * as bcrypt from 'bcrypt';
 import { In, Repository } from 'typeorm';
+import { normalizeClubRole } from '../shared/domain/club/club-roles';
+import { toIsoDateOnly } from '../shared/domain/shared/iso-date';
+import {
+  PASSWORD_HASHER,
+  type PasswordHasher,
+} from '../shared/application/ports/password-hasher.port';
 import { GymRole } from '../entities/gym-role.entity';
 import { GymMember } from '../entities/gym-member.entity';
 import { Specialization } from '../entities/specialization.entity';
@@ -50,17 +56,6 @@ export type StaffDetail = {
   activated: number | null;
 };
 
-function isoDateOnly(v: Date | string | null | undefined): string | null {
-  if (v == null) return null;
-  if (v instanceof Date) return v.toISOString().slice(0, 10);
-  const s = String(v);
-  return s.length >= 10 ? s.slice(0, 10) : s;
-}
-
-function normRole(r: string | null | undefined): string {
-  return (r ?? '').trim().toLowerCase();
-}
-
 @Injectable()
 export class StaffService {
   constructor(
@@ -70,6 +65,7 @@ export class StaffService {
     private readonly gymRoles: Repository<GymRole>,
     @InjectRepository(Specialization)
     private readonly specializations: Repository<Specialization>,
+    @Inject(PASSWORD_HASHER) private readonly passwordHasher: PasswordHasher,
   ) {}
 
   encodeSpecialization(ids: number[]): string {
@@ -109,7 +105,7 @@ export class StaffService {
       is_administrator: boolean;
     };
   }> {
-    const ar = normRole(actor.role_name);
+    const ar = normalizeClubRole(actor.role_name);
     if (ar !== 'administrator' && ar !== 'staff_member') {
       throw new ForbiddenException('Sin acceso al listado de personal.');
     }
@@ -171,7 +167,7 @@ export class StaffService {
     actor: { userId: number; role_name: string },
     staffId: number,
   ): Promise<void> {
-    const ar = normRole(actor.role_name);
+    const ar = normalizeClubRole(actor.role_name);
     if (ar === 'administrator') return;
     if (ar === 'staff_member' && actor.userId === staffId) return;
     throw new ForbiddenException('No puedes ver la ficha de otro usuario.');
@@ -184,7 +180,7 @@ export class StaffService {
     await this.assertCanViewStaff(actor, id);
 
     const m = await this.members.findOne({ where: { id } });
-    if (!m || normRole(m.role_name) !== 'staff_member') {
+    if (!m || normalizeClubRole(m.role_name) !== 'staff_member') {
       throw new NotFoundException('Miembro del personal no encontrado.');
     }
 
@@ -213,7 +209,7 @@ export class StaffService {
         middle_name: m.middle_name,
         last_name: m.last_name,
         gender: m.gender,
-        birth_date: isoDateOnly(m.birth_date as Date),
+        birth_date: toIsoDateOnly(m.birth_date as Date),
         role: m.role,
         club_role_name,
         specialization_ids,
@@ -247,7 +243,7 @@ export class StaffService {
       }
     }
 
-    const hash = await bcrypt.hash(dto.password, 10);
+    const hash = await this.passwordHasher.hash(dto.password);
     const row = this.members.create({
       role_name: 'staff_member',
       activated: 1,
@@ -285,7 +281,7 @@ export class StaffService {
     actor: { userId: number; role_name: string },
   ): Promise<{ staff: StaffDetail }> {
     const m = await this.members.findOne({ where: { id } });
-    if (!m || normRole(m.role_name) !== 'staff_member') {
+    if (!m || normalizeClubRole(m.role_name) !== 'staff_member') {
       throw new NotFoundException('Miembro del personal no encontrado.');
     }
 
@@ -308,7 +304,7 @@ export class StaffService {
     }
 
     if (dto.password !== undefined && dto.password.length > 0) {
-      m.password = await bcrypt.hash(dto.password, 10);
+      m.password = await this.passwordHasher.hash(dto.password);
     }
     if (dto.first_name !== undefined) m.first_name = dto.first_name.trim();
     if (dto.middle_name !== undefined)
@@ -332,7 +328,7 @@ export class StaffService {
 
   async remove(id: number): Promise<{ ok: true }> {
     const m = await this.members.findOne({ where: { id } });
-    if (!m || normRole(m.role_name) !== 'staff_member') {
+    if (!m || normalizeClubRole(m.role_name) !== 'staff_member') {
       throw new NotFoundException('Miembro del personal no encontrado.');
     }
     await this.members.delete({ id });

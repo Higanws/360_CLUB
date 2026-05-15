@@ -124,8 +124,8 @@ export function MemberWeeklyDietPage() {
       <section className="mp-wellness-section">
         <h2 className="mp-wellness-section-title">Dieta de la semana</h2>
         <p className="muted">
-          Usa la barra «Vista de socio» arriba para buscar y seleccionar un miembro. Así verás el
-          mismo plan de comidas que él en el portal.
+          Usa la barra «Vista de socio» arriba para buscar y seleccionar un miembro. Verás el mismo
+          plan de comidas en solo lectura que en el portal del socio.
         </p>
       </section>
     );
@@ -179,14 +179,12 @@ export function MemberWeeklyDietPage() {
                         const text = grid[slotKey(wd, hour)] ?? '';
                         return (
                           <td key={`${label}-${hour}`} className="nutrition-cal-cell">
-                            <textarea
-                              className="nutrition-cal-cell-textarea"
-                              value={text}
-                              readOnly
-                              disabled
-                              rows={3}
+                            <div
+                              className="nutrition-cal-cell-readonly"
                               aria-label={`${label} ${formatHourLabel(hour)}`}
-                            />
+                            >
+                              {text.trim() ? text : '\u00a0'}
+                            </div>
                           </td>
                         );
                       })}

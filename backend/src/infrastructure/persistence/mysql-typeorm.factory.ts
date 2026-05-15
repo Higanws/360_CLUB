@@ -23,11 +23,11 @@ import { PosProduct } from '../../entities/pos-product.entity';
 import { PosSale } from '../../entities/pos-sale.entity';
 import { PosSaleLine } from '../../entities/pos-sale-line.entity';
 import { Specialization } from '../../entities/specialization.entity';
-import { waitForMysql } from '../../wait-for-mysql';
+import { waitForMysql } from './wait-for-mysql';
 
 /**
  * Adaptador de persistencia (hexagonal): la aplicación habla con MySQL vía TypeORM.
- * El esquema lo define `database/schema/schema_mysql.sql` (MVP); las entidades mapean tablas sin `synchronize`.
+ * Esquema MVP en `backend/database/schema/schema_mysql.sql`. Sin `synchronize`.
  */
 export async function createMysqlTypeOrmOptions(
   config: ConfigService,

@@ -1,6 +1,6 @@
 import { Navigate } from 'react-router-dom';
 import { memberPortalRoutes } from '../config/member-portal';
-import { routes } from '../config/member-management';
+import { gestionHomeForRole } from '../lib/role-access';
 import { useAuth } from '../context/AuthContext';
 
 /** Tras login: staff/admin → gestión de miembros (socios); socio → portal limitado. */
@@ -24,5 +24,5 @@ export function HomeEntry() {
     return <Navigate to={memberPortalRoutes.wellness} replace />;
   }
 
-  return <Navigate to={routes.dashboard} replace />;
+  return <Navigate to={gestionHomeForRole(user.role_name)} replace />;
 }

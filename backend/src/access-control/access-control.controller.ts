@@ -1,14 +1,15 @@
 import { Body, Controller, Get, Post, Query, Req, UseGuards } from '@nestjs/common';
-import { AuthGuard } from '@nestjs/passport';
 import { BusinessRoleGuard } from '../members/business-role.guard';
 import { BusinessRoles } from '../members/roles.decorator';
+import { AdministratorRoleGuard } from '../staff/administrator-role.guard';
 import { CheckAccessDto } from './dto/check-access.dto';
+import { RecentAccessLogsQueryDto } from './dto/recent-access-logs-query.dto';
 import { AccessControlService } from './access-control.service';
 
 type JwtReq = { user: { userId: number; role_name: string } };
 
 @Controller('access-control')
-@UseGuards(AuthGuard('jwt'), BusinessRoleGuard)
+@UseGuards(BusinessRoleGuard, AdministratorRoleGuard)
 @BusinessRoles()
 export class AccessControlController {
   constructor(private readonly access: AccessControlService) {}
@@ -20,13 +21,13 @@ export class AccessControlController {
   }
 
   @Get('recent')
-  recent(
-    @Query('limit') limitRaw?: string,
-    @Query('from') from?: string,
-    @Query('to') to?: string,
-  ) {
-    const n = parseInt(limitRaw ?? '100', 10);
-    const limit = Number.isFinite(n) ? n : 100;
-    return this.access.recentLogs(limit, from?.trim(), to?.trim());
+  recent(@Req() req: JwtReq, @Query() q: RecentAccessLogsQueryDto) {
+    const limit = q.limit ?? 100;
+    return this.access.recentLogs(
+      req.user,
+      limit,
+      q.from?.trim(),
+      q.to?.trim(),
+    );
   }
 }

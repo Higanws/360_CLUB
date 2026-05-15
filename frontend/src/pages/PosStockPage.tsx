@@ -1,11 +1,11 @@
 import axios from 'axios';
 import { type FormEvent, useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { memberPortalRoutes } from '../config/member-portal';
+import { MmTableActions } from '../components/mm/MmTableActions';
+import { PageLoading } from '../components/mm/PageLoading';
+import { useGestionAuth } from '../hooks/useGestionAuth';
 import { api } from '../lib/api';
 import { extractApiMessage } from '../lib/extract-api-message';
 import { currencyFieldLabel, formatMoney } from '../lib/format-money';
-import { useAuth } from '../context/AuthContext';
 
 type Product = {
   id: number;
@@ -17,8 +17,7 @@ type Product = {
 };
 
 export function PosStockPage() {
-  const { user, loading } = useAuth();
-  const navigate = useNavigate();
+  useGestionAuth();
   const [products, setProducts] = useState<Product[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
@@ -31,15 +30,7 @@ export function PosStockPage() {
 
   const [stockDraft, setStockDraft] = useState<Record<number, string>>({});
 
-  useEffect(() => {
-    if (!loading && !user) navigate('/login', { replace: true });
-  }, [loading, user, navigate]);
-
-  useEffect(() => {
-    if (!user) return;
-    const r = user.role_name?.trim().toLowerCase() ?? '';
-    if (r === 'member') navigate(memberPortalRoutes.wellness, { replace: true });
-  }, [user, navigate]);
+  const [initialLoad, setInitialLoad] = useState(true);
 
   function load() {
     api
@@ -50,13 +41,13 @@ export function PosStockPage() {
           Object.fromEntries(data.products.map((p) => [p.id, String(p.stock_qty)])),
         );
       })
-      .catch(() => setError('No se pudo cargar el inventario.'));
+      .catch(() => setError('No se pudo cargar el inventario.'))
+      .finally(() => setInitialLoad(false));
   }
 
   useEffect(() => {
-    if (!user) return;
     load();
-  }, [user]);
+  }, []);
 
   async function onCreate(e: FormEvent) {
     e.preventDefault();
@@ -158,12 +149,8 @@ export function PosStockPage() {
     }
   }
 
-  if (loading || !user) {
-    return (
-      <div className="mm-page">
-        <p className="muted">Cargando…</p>
-      </div>
-    );
+  if (initialLoad && products.length === 0) {
+    return <PageLoading message="Cargando inventario…" />;
   }
 
   return (
@@ -296,28 +283,22 @@ export function PosStockPage() {
                         </span>
                       )}
                     </td>
-                    <td className="pos-stock-table__actions">
-                      <div
-                        className="pos-stock-actions"
-                        role="group"
-                        aria-label={`Acciones de ${p.name}`}
+                    <MmTableActions label={`Acciones de ${p.name}`}>
+                      <button
+                        type="button"
+                        className="btn-table btn-table--link"
+                        onClick={() => void toggleActive(p)}
                       >
-                        <button
-                          type="button"
-                          className="btn-table btn-table--link"
-                          onClick={() => void toggleActive(p)}
-                        >
-                          {p.active === 1 ? 'Desactivar' : 'Activar'}
-                        </button>
-                        <button
-                          type="button"
-                          className="btn-table btn-table--danger"
-                          onClick={() => void removeProduct(p.id)}
-                        >
-                          Eliminar
-                        </button>
-                      </div>
-                    </td>
+                        {p.active === 1 ? 'Desactivar' : 'Activar'}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-table btn-table--danger"
+                        onClick={() => void removeProduct(p.id)}
+                      >
+                        Eliminar
+                      </button>
+                    </MmTableActions>
                   </tr>
                 ))
               )}

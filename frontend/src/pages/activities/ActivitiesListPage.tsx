@@ -5,6 +5,7 @@ import { routes } from '../../config/member-management';
 import { memberPortalRoutes } from '../../config/member-portal';
 import { api } from '../../lib/api';
 import { activityDifficultyLabel } from '../../lib/activity-difficulty';
+import { MmTableActions } from '../../components/mm/MmTableActions';
 import { useAuth } from '../../context/AuthContext';
 
 type Row = {
@@ -112,23 +113,23 @@ export function ActivitiesListPage() {
 
       {error ? <p className="login-error">{error}</p> : null}
 
-      <div className="pay-toolbar">
-        <span className="muted">Mostrar entradas</span>
-        <label className="pay-search">
-          <span>Buscar:</span>
-          <input
-            type="search"
-            value={search}
-            onChange={(e) => {
-              setSearch(e.target.value);
-              setPage(0);
-            }}
-            placeholder="Nombre, categoría, nivel o entrenador"
-          />
-        </label>
-      </div>
-
-      <section className="members-panel">
+      <section className="members-panel mm-data-panel">
+        <div className="mm-data-panel__toolbar pay-toolbar">
+          <span className="muted">Mostrar entradas</span>
+          <label className="pay-search">
+            <span>Buscar:</span>
+            <input
+              type="search"
+              value={search}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                setPage(0);
+              }}
+              placeholder="Nombre, categoría, nivel o entrenador"
+            />
+          </label>
+        </div>
+        <div className="mm-data-panel__body">
         <div className="members-table-wrap">
           <table className="members-table">
             <thead>
@@ -161,7 +162,7 @@ export function ActivitiesListPage() {
                         : '—'}
                     </td>
                     <td>{row.video_count}</td>
-                    <td className="members-actions">
+                    <MmTableActions label={`Acciones de ${row.title}`}>
                       <Link
                         to={routes.ejerciciosDetail(row.id)}
                         className="btn-table btn-table--link"
@@ -182,12 +183,13 @@ export function ActivitiesListPage() {
                       >
                         Borrar
                       </button>
-                    </td>
+                    </MmTableActions>
                   </tr>
                 ))
               )}
             </tbody>
           </table>
+        </div>
         </div>
       </section>
 

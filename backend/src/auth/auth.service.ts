@@ -12,6 +12,7 @@ import * as bcrypt from 'bcrypt';
 import { Repository } from 'typeorm';
 import { GymMember } from '../entities/gym-member.entity';
 import { LoginDto } from './dto/login.dto';
+import { toUserProfileDto, type UserProfileDto } from './user-profile';
 
 export type SafeUser = Omit<GymMember, 'password'>;
 
@@ -126,7 +127,7 @@ export class AuthService {
     const tokens = await this.issueTokens(member);
     return {
       ...tokens,
-      user: this.sanitize(member),
+      user: toUserProfileDto(member),
     };
   }
 
@@ -197,11 +198,12 @@ export class AuthService {
     return this.issueTokens(member);
   }
 
-  async getProfile(userId: number): Promise<SafeUser> {
+  async getProfile(userId: number): Promise<UserProfileDto> {
     const member = await this.members.findOne({ where: { id: userId } });
     if (!member) {
       throw new UnauthorizedException();
     }
-    return this.sanitize(member);
+    this.assertMemberMayLogin(member);
+    return toUserProfileDto(member);
   }
 }

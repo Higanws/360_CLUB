@@ -10,22 +10,14 @@ import { GeneralSetting } from '../entities/general-setting.entity';
 import { GymMember } from '../entities/gym-member.entity';
 import { NutritionPlan } from '../entities/nutrition-plan.entity';
 import { UpsertNutritionPlanDto } from './dto/upsert-nutrition-plan.dto';
+import { normalizeClubRole } from '../shared/domain/club/club-roles';
+import { assertStaffOwnsMember } from '../shared/application/security/staff-member-scope';
+import { toIsoDateOnly } from '../shared/domain/shared/iso-date';
 import {
   dedupeNutritionSlots,
   parseMealsScheduleJson,
   type NutritionScheduleSlot,
 } from './schedule-json.util';
-
-function normRole(r: string | null | undefined): string {
-  return (r ?? '').trim().toLowerCase();
-}
-
-function isoDateOnly(v: Date | string | null | undefined): string | null {
-  if (v == null) return null;
-  if (v instanceof Date) return v.toISOString().slice(0, 10);
-  const s = String(v);
-  return s.length >= 10 ? s.slice(0, 10) : s;
-}
 
 export type NutritionOverviewRow = {
   member_id: number;
@@ -85,7 +77,7 @@ export class NutritionService {
   ) {}
 
   private assertBusinessRole(role_name: string): void {
-    const r = normRole(role_name);
+    const r = normalizeClubRole(role_name);
     if (r !== 'administrator' && r !== 'staff_member') {
       throw new ForbiddenException(
         'Nutrición solo para administración o staff del club.',
@@ -104,18 +96,7 @@ export class NutritionService {
     member: GymMember,
   ): Promise<void> {
     this.assertBusinessRole(actor.role_name);
-    const r = normRole(actor.role_name);
-    if (r === 'administrator') return;
-
-    const s = await this.settingsRow();
-    const ownOnly = s?.staff_can_view_own_member === 1;
-    if (ownOnly) {
-      if (member.assign_staff_mem !== actor.userId) {
-        throw new ForbiddenException(
-          'No puedes gestionar socios que no tienes asignados.',
-        );
-      }
-    }
+    assertStaffOwnsMember(actor, member);
   }
 
   async overview(actor: {
@@ -123,7 +104,7 @@ export class NutritionService {
     role_name: string;
   }): Promise<{ rows: NutritionOverviewRow[] }> {
     this.assertBusinessRole(actor.role_name);
-    const role = normRole(actor.role_name);
+    const role = normalizeClubRole(actor.role_name);
     const uid = actor.userId;
 
     const sql = `
@@ -153,11 +134,7 @@ ORDER BY m.first_name ASC, m.last_name ASC
 
     let filtered = raw;
     if (role === 'staff_member') {
-      const settingRow = await this.settingsRow();
-      const ownOnly = settingRow?.staff_can_view_own_member === 1;
-      if (ownOnly) {
-        filtered = raw.filter((row) => row.assign_staff_mem === uid);
-      }
+      filtered = raw.filter((row) => row.assign_staff_mem === uid);
     }
 
     const planIds = [
@@ -186,8 +163,8 @@ ORDER BY m.first_name ASC, m.last_name ASC
       first_name: row.first_name,
       last_name: row.last_name,
       plan_id: row.plan_id,
-      valid_from: isoDateOnly(row.valid_from as Date),
-      valid_to: isoDateOnly(row.valid_to as Date),
+      valid_from: toIsoDateOnly(row.valid_from as Date),
+      valid_to: toIsoDateOnly(row.valid_to as Date),
       meal_count:
         row.plan_id != null ? (countByPlanId.get(row.plan_id) ?? 0) : 0,
     }));
@@ -201,7 +178,7 @@ ORDER BY m.first_name ASC, m.last_name ASC
   ): Promise<{ plan: NutritionPlanPayload | null }> {
     this.assertBusinessRole(actor.role_name);
     const m = await this.members.findOne({ where: { id: memberId } });
-    if (!m || normRole(m.role_name) !== 'member') {
+    if (!m || normalizeClubRole(m.role_name) !== 'member') {
       throw new NotFoundException('Socio no encontrado.');
     }
     await this.assertCanManageMember(actor, m);
@@ -232,8 +209,8 @@ ORDER BY m.first_name ASC, m.last_name ASC
         member_id: memberId,
         first_name: m.first_name,
         last_name: m.last_name,
-        valid_from: isoDateOnly(plan.valid_from as Date),
-        valid_to: isoDateOnly(plan.valid_to as Date),
+        valid_from: toIsoDateOnly(plan.valid_from as Date),
+        valid_to: toIsoDateOnly(plan.valid_to as Date),
         schedule_slots,
       },
     };
@@ -246,7 +223,7 @@ ORDER BY m.first_name ASC, m.last_name ASC
   ): Promise<{ plan: NutritionPlanPayload }> {
     this.assertBusinessRole(actor.role_name);
     const m = await this.members.findOne({ where: { id: memberId } });
-    if (!m || normRole(m.role_name) !== 'member') {
+    if (!m || normalizeClubRole(m.role_name) !== 'member') {
       throw new NotFoundException('Socio no encontrado.');
     }
     await this.assertCanManageMember(actor, m);
@@ -288,7 +265,7 @@ ORDER BY m.first_name ASC, m.last_name ASC
   ): Promise<{ ok: true }> {
     this.assertBusinessRole(actor.role_name);
     const m = await this.members.findOne({ where: { id: memberId } });
-    if (!m || normRole(m.role_name) !== 'member') {
+    if (!m || normalizeClubRole(m.role_name) !== 'member') {
       throw new NotFoundException('Socio no encontrado.');
     }
     await this.assertCanManageMember(actor, m);

@@ -1,0 +1,159 @@
+/**
+ * Tablas de gestión Club360 — panel, celdas, acciones y espaciado unificados.
+ * Usar con: .mm-data-panel > .mm-data-panel__toolbar? + .mm-data-panel__body > .members-table-wrap
+ */
+
+.mm-page,
+.mm-module-page {
+  --mm-panel-gap: 1rem;
+  --mm-panel-pad-x: 1.15rem;
+  --mm-panel-pad-y: 1.1rem;
+  --mm-table-cell-px: 0.85rem;
+  --mm-table-cell-py: 0.75rem;
+  --mm-table-actions-gap: 0.4rem;
+}
+
+/* Espacio entre paneles apilados (ej. filtros + tabla antes eran dos cajas pegadas) */
+.mm-page .mm-data-panel + .mm-data-panel,
+.mm-page .members-panel.mm-data-panel + .members-panel.mm-data-panel {
+  margin-top: var(--mm-panel-gap);
+}
+
+.mm-data-panel.members-panel--pad {
+  padding: var(--mm-panel-pad-y) var(--mm-panel-pad-x);
+}
+
+.mm-data-panel:not(.members-panel--pad) .mm-data-panel__body {
+  padding: 0 var(--mm-panel-pad-x) var(--mm-panel-pad-y);
+}
+
+.mm-data-panel:not(.members-panel--pad) .mm-data-panel__toolbar {
+  padding: var(--mm-panel-pad-y) var(--mm-panel-pad-x) 0;
+}
+
+.mm-data-panel__toolbar {
+  margin: 0;
+  padding-bottom: var(--mm-panel-pad-y);
+  margin-bottom: var(--mm-panel-pad-y);
+  border-bottom: 1px solid var(--border);
+}
+
+.mm-data-panel__toolbar.pay-toolbar,
+.mm-data-panel__toolbar.access-control-filters {
+  margin-bottom: var(--mm-panel-pad-y);
+}
+
+.mm-data-panel__toolbar:last-child {
+  border-bottom: none;
+  margin-bottom: 0;
+  padding-bottom: 0;
+}
+
+.mm-data-panel__body {
+  margin: 0;
+  min-width: 0;
+}
+
+.mm-data-panel .members-table-wrap {
+  margin: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+}
+
+/* ——— Tabla ——— */
+.mm-page .members-table {
+  table-layout: auto;
+}
+
+.mm-page .members-table th,
+.mm-page .members-table td {
+  padding: var(--mm-table-cell-py) var(--mm-table-cell-px);
+  vertical-align: middle;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+}
+
+.mm-page .members-table thead th {
+  padding-top: calc(var(--mm-table-cell-py) + 0.1rem);
+  padding-bottom: calc(var(--mm-table-cell-py) + 0.15rem);
+}
+
+.mm-page .members-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.mm-page .members-table.members-table--centered th,
+.mm-page .members-table.members-table--centered td {
+  text-align: center;
+}
+
+/* Columna acciones: nunca flex en <td> (rompe bordes de fila) */
+.mm-table-actions {
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.mm-table-actions__inner {
+  display: inline-flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  justify-content: flex-start;
+  gap: var(--mm-table-actions-gap);
+  max-width: 100%;
+}
+
+.mm-table-actions__inner .btn-table {
+  flex-shrink: 0;
+  white-space: nowrap;
+  margin: 0;
+}
+
+/* Compat: celdas antiguas con .members-actions en <td> */
+.members-table td.members-actions {
+  display: table-cell;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.members-table td.members-actions:not(:has(.mm-table-actions__inner)) {
+  /* hijos sueltos: flujo en línea sin flex en td */
+  line-height: 1.4;
+}
+
+.members-table td.members-actions:not(:has(.mm-table-actions__inner)) > .btn-table,
+.members-table td.members-actions:not(:has(.mm-table-actions__inner)) > a.btn-table {
+  display: inline-flex;
+  vertical-align: middle;
+  margin-right: var(--mm-table-actions-gap);
+  margin-bottom: 0;
+}
+
+.members-table td.members-actions:not(:has(.mm-table-actions__inner)) > *:last-child {
+  margin-right: 0;
+}
+
+/* Botones de fila */
+.mm-page .btn-table {
+  font-size: 0.75rem;
+  padding: 0.35rem 0.55rem;
+  line-height: 1.25;
+}
+
+/* Fila vacía / mensaje */
+.mm-table-empty td {
+  text-align: center;
+  padding: 1.35rem var(--mm-table-cell-px) !important;
+  border-bottom: none !important;
+  color: var(--text-muted);
+}
+
+/* Toolbar fuera del panel (legacy): separación antes de la tabla */
+.mm-page .pay-toolbar:not(.mm-data-panel__toolbar) {
+  margin-bottom: var(--mm-panel-gap);
+}
+
+.mm-module-page > .members-toolbar + .mm-data-panel,
+.mm-module-page > .members-toolbar + .members-panel.mm-data-panel {
+  margin-top: 0;
+}

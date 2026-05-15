@@ -13,9 +13,9 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import type { Response } from 'express';
-import { AuthGuard } from '@nestjs/passport';
 import { BusinessRoleGuard } from '../members/business-role.guard';
 import { BusinessRoles } from '../members/roles.decorator';
+import { AdministratorRoleGuard } from '../staff/administrator-role.guard';
 import { CreatePosProductDto } from './dto/create-product.dto';
 import { CreatePosSaleDto } from './dto/create-sale.dto';
 import { UpdatePosProductDto } from './dto/update-product.dto';
@@ -24,7 +24,7 @@ import { PosProductsService } from './pos-products.service';
 import { PosSalesService } from './pos-sales.service';
 
 @Controller('pos')
-@UseGuards(AuthGuard('jwt'), BusinessRoleGuard)
+@UseGuards(BusinessRoleGuard, AdministratorRoleGuard)
 @BusinessRoles()
 export class PosController {
   constructor(

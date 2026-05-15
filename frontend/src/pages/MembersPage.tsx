@@ -1,10 +1,13 @@
-import axios from 'axios';
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { MemberAvatar } from '../components/mm/MemberAvatar';
+import { MmTableActions } from '../components/mm/MmTableActions';
+import { PageLoading } from '../components/mm/PageLoading';
 import { routes } from '../config/member-management';
 import { memberPortalRoutes } from '../config/member-portal';
+import { useGestionAuth } from '../hooks/useGestionAuth';
 import { api } from '../lib/api';
-import { useAuth } from '../context/AuthContext';
+import { apiErrorStatus } from '../lib/is-api-error';
 
 type MembersPayload = {
   title: string;
@@ -27,8 +30,6 @@ type MembersPayload = {
     date_format: string | null;
   };
 };
-
-const uploadBase = import.meta.env.VITE_UPLOAD_BASE as string | undefined;
 
 function formatClubDate(
   iso: string | null,
@@ -62,74 +63,27 @@ function todayIso(): string {
   return `${y}-${m}-${d}`;
 }
 
-function MemberPhoto({
-  filename,
-  label,
-}: {
-  filename: string | null;
-  label: string;
-}) {
-  const [broken, setBroken] = useState(false);
-  const src =
-    filename && uploadBase
-      ? `${uploadBase.replace(/\/$/, '')}/${filename}`
-      : null;
-
-  if (src && !broken) {
-    return (
-      <img
-        className="members-photo"
-        src={src}
-        alt=""
-        onError={() => setBroken(true)}
-      />
-    );
-  }
-
-  const initials = label
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((w) => w[0]?.toUpperCase() ?? '')
-    .join('');
-
-  return (
-    <div className="members-photo members-photo--fallback" aria-hidden>
-      {initials || '?'}
-    </div>
-  );
-}
-
 export function MembersPage() {
-  const { user, loading } = useAuth();
+  useGestionAuth();
   const navigate = useNavigate();
   const [data, setData] = useState<MembersPayload | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [loadingData, setLoadingData] = useState(true);
 
   useEffect(() => {
-    if (!loading && !user) {
-      navigate('/login', { replace: true });
-    }
-  }, [loading, user, navigate]);
-
-  useEffect(() => {
-    if (!user) return;
-    const r = user.role_name?.trim().toLowerCase() ?? '';
-    if (r === 'member') {
-      navigate(memberPortalRoutes.wellness, { replace: true });
-      return;
-    }
+    setLoadingData(true);
     api
       .get<MembersPayload>('/members')
       .then(({ data: d }) => setData(d))
       .catch((e: unknown) => {
-        if (axios.isAxiosError(e) && e.response?.status === 403) {
+        if (apiErrorStatus(e) === 403) {
           navigate(memberPortalRoutes.wellness, { replace: true });
           return;
         }
         setError('No se pudo cargar la lista de socios.');
-      });
-  }, [user, navigate]);
+      })
+      .finally(() => setLoadingData(false));
+  }, [navigate]);
 
   async function handleDelete(id: number) {
     if (!confirm('¿Eliminar este socio? Esta acción no se puede deshacer.')) {
@@ -147,12 +101,8 @@ export function MembersPage() {
 
   const today = todayIso();
 
-  if (loading || !user) {
-    return (
-      <div className="mm-page">
-        <p className="muted">Cargando sesión…</p>
-      </div>
-    );
+  if (loadingData && !data) {
+    return <PageLoading message="Cargando socios…" />;
   }
 
   const df = data?.meta.date_format;
@@ -180,7 +130,7 @@ export function MembersPage() {
 
       {error ? <p className="login-error">{error}</p> : null}
 
-      <section className="members-panel">
+      <section className="members-panel mm-data-panel">
         <div className="members-table-wrap">
           <table className="members-table">
             <thead>
@@ -209,7 +159,7 @@ export function MembersPage() {
                 return (
                   <tr key={row.id}>
                     <td>
-                      <MemberPhoto
+                      <MemberAvatar
                         filename={row.image}
                         label={name || row.member_id || '?'}
                       />
@@ -219,7 +169,7 @@ export function MembersPage() {
                     <td>{formatClubDate(row.membership_valid_from, df)}</td>
                     <td>{formatClubDate(row.membership_valid_to, df)}</td>
                     <td>{row.membership_status ?? '—'}</td>
-                    <td className="members-actions">
+                    <MmTableActions label={`Acciones de ${name || row.member_id || 'socio'}`}>
                       <Link
                         to={routes.sociosPhysical(row.id)}
                         className="btn-table btn-table--link"
@@ -248,7 +198,7 @@ export function MembersPage() {
                       <button type="button" className="btn-table" disabled title="Próximamente">
                         Asistencia
                       </button>
-                    </td>
+                    </MmTableActions>
                     {data?.meta.show_status_column ? (
                       <td>
                         {row.activated !== 1 ? (

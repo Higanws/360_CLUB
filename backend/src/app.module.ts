@@ -23,9 +23,12 @@ import { isInstallComplete } from './install/install-state';
 import { IdempotencyModule } from './idempotency/idempotency.module';
 import { SettingsModule } from './settings/settings.module';
 import { createMysqlTypeOrmOptions } from './infrastructure/persistence/mysql-typeorm.factory';
+import { ClubSharedModule } from './shared/club-shared.module';
+import { JwtAuthGuard } from './auth/jwt-auth.guard';
 
 const dbStack = isInstallComplete()
   ? [
+      ClubSharedModule,
       TypeOrmModule.forRootAsync({
         imports: [ConfigModule],
         inject: [ConfigService],
@@ -73,6 +76,10 @@ const dbStack = isInstallComplete()
     {
       provide: APP_GUARD,
       useClass: ThrottlerGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: JwtAuthGuard,
     },
   ],
 })

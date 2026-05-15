@@ -1,8 +1,12 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
+import { CLUB_ROLES } from '../shared/domain/club/club-roles';
+import {
+  GYM_MEMBER_READ,
+  type GymMemberReadRepository,
+} from '../shared/application/ports/gym-member-read.port';
 import { ClubAccessLog } from '../entities/club-access-log.entity';
-import { GymMember } from '../entities/gym-member.entity';
 import { MembershipPayment } from '../entities/membership-payment.entity';
 import { Membership } from '../entities/membership.entity';
 import { Activity } from '../entities/activity.entity';
@@ -55,23 +59,17 @@ function addDaysLocal(ymd: string, delta: number): string {
 
 @Injectable()
 export class DashboardService {
-  constructor(@InjectDataSource() private readonly ds: DataSource) {}
+  constructor(
+    @InjectDataSource() private readonly ds: DataSource,
+    @Inject(GYM_MEMBER_READ) private readonly memberRead: GymMemberReadRepository,
+  ) {}
 
   async getBusinessMetrics(): Promise<DashboardBusinessMetrics> {
-    const memberRepo = this.ds.getRepository(GymMember);
-    const members = await memberRepo
-      .createQueryBuilder('m')
-      .where("LOWER(TRIM(m.role_name)) = 'member'")
-      .getCount();
-    const staff = await memberRepo
-      .createQueryBuilder('m')
-      .where("LOWER(TRIM(m.role_name)) = 'staff_member'")
-      .getCount();
-    const active_members = await memberRepo
-      .createQueryBuilder('m')
-      .where("LOWER(TRIM(m.role_name)) = 'member'")
-      .andWhere('m.activated = 1')
-      .getCount();
+    const [members, staff, active_members] = await Promise.all([
+      this.memberRead.countByRole(CLUB_ROLES.MEMBER),
+      this.memberRead.countByRole(CLUB_ROLES.STAFF),
+      this.memberRead.countActiveMembers(),
+    ]);
 
     const [
       membership_plans,

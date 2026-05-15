@@ -4,6 +4,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { routes } from '../../config/member-management';
 import { memberPortalRoutes } from '../../config/member-portal';
 import { api } from '../../lib/api';
+import { MmTableActions } from '../../components/mm/MmTableActions';
 import { useAuth } from '../../context/AuthContext';
 
 type Row = {
@@ -153,7 +154,7 @@ export function TrainingAssignmentsListPage() {
         </label>
       </div>
 
-      <section className="members-panel">
+      <section className="members-panel mm-data-panel">
         <div className="members-table-wrap">
           <table className="members-table">
             <thead>
@@ -178,7 +179,7 @@ export function TrainingAssignmentsListPage() {
                     <td>{row.routine_title}</td>
                     <td>{formatNames(row.member_names)}</td>
                     <td>{formatNames(row.trainer_names)}</td>
-                    <td className="members-actions">
+                    <MmTableActions label={`Asignación ${row.routine_title}`}>
                       <button
                         type="button"
                         className="btn-table btn-table--danger"
@@ -186,7 +187,7 @@ export function TrainingAssignmentsListPage() {
                       >
                         Borrar
                       </button>
-                    </td>
+                    </MmTableActions>
                   </tr>
                 ))
               )}

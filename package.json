@@ -3,11 +3,15 @@
   "private": true,
   "description": "Scripts de arranque local (MariaDB/MySQL instalado en el equipo; sin Docker).",
   "scripts": {
-    "mysql": "node -e \"console.log('\\n[Club360] Base de datos: MariaDB o MySQL en localhost (sin Docker).\\n- Arranca el servicio de MariaDB.\\n- Crea la base y usuario según tu entorno; ajusta backend/.env (DATABASE_HOST, DATABASE_PORT, DATABASE_USER, DATABASE_PASSWORD, DATABASE_NAME y DATABASE_URL para Prisma).\\n- Esquema de referencia: database/schema/schema_mysql.sql\\n\\nNo se ejecuta Docker desde este script.\\n')\"",
+    "mysql": "node -e \"console.log('\\n[Club360] Base de datos: MariaDB o MySQL en localhost (sin Docker).\\n- Arranca el servicio de MariaDB.\\n- Crea la base y usuario según tu entorno; ajusta backend/.env (DATABASE_HOST, DATABASE_PORT, DATABASE_USER, DATABASE_PASSWORD, DATABASE_NAME y DATABASE_URL para Prisma).\\n- Esquema de referencia: backend/database/schema/schema_mysql.sql\\n\\nNo se ejecuta Docker desde este script.\\n')\"",
     "local": "powershell -NoProfile -ExecutionPolicy Bypass -File ./club360.ps1",
     "api": "npm run start:dev --prefix backend",
     "api:local": "npm run start:dev:local --prefix backend",
     "web": "npm run dev --prefix frontend",
-    "build": "npm run build --prefix backend && npm run build --prefix frontend"
+    "demo:tunnel": "npx --yes cloudflared tunnel --url http://localhost:5173",
+    "build": "npm run build --prefix backend && npm run build --prefix frontend",
+    "test": "npm run test --prefix backend && npm run test --prefix frontend",
+    "test:infra": "npm run test:infra --prefix backend && npm run test:infra --prefix frontend",
+    "test:modules": "npm run test:modules --prefix backend && npm run test:modules --prefix frontend"
   }
 }

@@ -1,8 +1,6 @@
 // Esquema Club360 MVP — mantener alineado con `src/entities/*.entity.ts`
-// y `../database/schema/schema_mysql.sql`. TypeORM sigue siendo el cliente de runtime en Nest.
-// Migraciones: baseline único en `prisma/migrations/` (DDL + datos demo en el mismo `migration.sql`).
-// Regenerar SQL si cambias modelos: `npx prisma migrate diff --from-empty --to-schema-datamodel prisma/schema.prisma --script`
-// (luego fusionar a mano la parte INSERT demo si aplica).
+// y `database/schema/schema_mysql.sql`. Datos demo: `database/seed/seed_mvp.sql`.
+// TypeORM es el cliente de runtime en Nest; Prisma solo genera cliente (`npm run db:generate`).
 
 generator client {
   provider = "prisma-client-js"

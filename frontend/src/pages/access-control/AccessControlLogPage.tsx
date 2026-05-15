@@ -79,9 +79,9 @@ export function AccessControlLogPage() {
           </div>
         </header>
 
-        <section className="members-panel members-panel--pad">
+        <section className="members-panel members-panel--pad mm-data-panel mm-module-centered">
           <form
-            className="access-control-filters"
+            className="mm-data-panel__toolbar access-control-filters"
             onSubmit={(e) => {
               e.preventDefault();
               load();
@@ -111,11 +111,10 @@ export function AccessControlLogPage() {
               {busy ? 'Cargando…' : 'Aplicar filtros'}
             </button>
           </form>
-        </section>
 
-        {error ? <p className="login-error mm-module-centered">{error}</p> : null}
+          {error ? <p className="login-error">{error}</p> : null}
 
-        <section className="members-panel members-panel--pad mm-module-centered">
+          <div className="mm-data-panel__body">
           <div className="members-table-wrap">
             <table className="members-table members-table--centered">
               <thead>
@@ -130,10 +129,8 @@ export function AccessControlLogPage() {
               </thead>
               <tbody>
                 {rows.length === 0 ? (
-                  <tr>
-                    <td colSpan={6} className="muted">
-                      No hay registros en este rango.
-                    </td>
+                  <tr className="mm-table-empty">
+                    <td colSpan={6}>No hay registros en este rango.</td>
                   </tr>
                 ) : (
                   rows.map((row) => (
@@ -163,6 +160,7 @@ export function AccessControlLogPage() {
                 )}
               </tbody>
             </table>
+          </div>
           </div>
         </section>
       </div>

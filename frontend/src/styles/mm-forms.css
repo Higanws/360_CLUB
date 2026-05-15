@@ -1,0 +1,50 @@
+/**
+ * Controles de formulario compartidos (gestión y POS).
+ */
+
+.mm-select,
+.pos-payment-field select,
+.member-form-grid select,
+.pay-manual-row select,
+.pay-manual-label-block select,
+select.mm-select {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.55rem 2.25rem 0.55rem 0.65rem;
+  line-height: 1.25;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background-color: var(--bg-page);
+  color: var(--text);
+  font-size: 1rem;
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M3 4.5 6 8 9 4.5' fill='none' stroke='%2371717a' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.65rem center;
+  background-size: 12px 12px;
+}
+
+:root[data-theme='dark'] .mm-select,
+:root[data-theme='dark'] .pos-payment-field select,
+:root[data-theme='dark'] .member-form-grid select,
+:root[data-theme='dark'] .pay-manual-row select,
+:root[data-theme='dark'] .pay-manual-label-block select,
+:root[data-theme='dark'] select.mm-select {
+  background-color: var(--bg-page);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M3 4.5 6 8 9 4.5' fill='none' stroke='%23d4d4d8' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.65rem center;
+  background-size: 12px 12px;
+}
+
+.mm-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.mm-field > span.muted,
+.mm-field > span:first-child {
+  font-size: 0.85rem;
+}

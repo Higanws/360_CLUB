@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Activity } from '../entities/activity.entity';
+import { GeneralSetting } from '../entities/general-setting.entity';
 import { GymMember } from '../entities/gym-member.entity';
 import { TrainingAssignment } from '../entities/training-assignment.entity';
 import { TrainingAssignmentMember } from '../entities/training-assignment-member.entity';
@@ -22,6 +23,7 @@ import { TrainingRoutinesService } from './training-routines.service';
       TrainingAssignmentMember,
       TrainingAssignmentTrainer,
       GymMember,
+      GeneralSetting,
     ]),
   ],
   controllers: [TrainingRoutinesController, TrainingAssignmentsController],

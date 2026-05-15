@@ -5,6 +5,7 @@ import { routes } from '../../config/member-management';
 import { memberPortalRoutes } from '../../config/member-portal';
 import { api } from '../../lib/api';
 import { routineDifficultyLabel } from '../../lib/activity-difficulty';
+import { MmTableActions } from '../../components/mm/MmTableActions';
 import { useAuth } from '../../context/AuthContext';
 
 type Row = {
@@ -126,7 +127,7 @@ export function TrainingRoutinesListPage() {
         </label>
       </div>
 
-      <section className="members-panel">
+      <section className="members-panel mm-data-panel">
         <div className="members-table-wrap">
           <table className="members-table">
             <thead>
@@ -151,7 +152,7 @@ export function TrainingRoutinesListPage() {
                     <td>{row.title}</td>
                     <td>{routineDifficultyLabel(row.difficulty_level)}</td>
                     <td>{row.exercise_count}</td>
-                    <td className="members-actions">
+                    <MmTableActions label={`Acciones de ${row.title}`}>
                       <Link
                         to={routes.rutinasEdit(row.id)}
                         className="btn-table btn-table--link"
@@ -165,7 +166,7 @@ export function TrainingRoutinesListPage() {
                       >
                         Borrar
                       </button>
-                    </td>
+                    </MmTableActions>
                   </tr>
                 ))
               )}

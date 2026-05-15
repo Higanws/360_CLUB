@@ -10,21 +10,22 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
-import { AuthGuard } from '@nestjs/passport';
 import { BusinessRoleGuard } from './business-role.guard';
 import { CreateMemberDto } from './dto/create-member.dto';
 import { UpdateMemberDto } from './dto/update-member.dto';
 import { MembersService } from './members.service';
 import { BusinessRoles } from './roles.decorator';
+import { AdministratorRoleGuard } from '../staff/administrator-role.guard';
 
 @Controller('members')
-@UseGuards(AuthGuard('jwt'), BusinessRoleGuard)
+@UseGuards(BusinessRoleGuard)
 @BusinessRoles()
 export class MembersController {
   constructor(private readonly members: MembersService) {}
 
   /** Listas desplegables (staff, clases, planes). */
   @Get('form-options')
+  @UseGuards(AdministratorRoleGuard)
   formOptions() {
     return this.members.formOptions();
   }
@@ -38,6 +39,7 @@ export class MembersController {
   }
 
   @Post()
+  @UseGuards(AdministratorRoleGuard)
   create(
     @Body() dto: CreateMemberDto,
     @Req() req: { user: { userId: number; role_name: string } },
@@ -60,6 +62,7 @@ export class MembersController {
   }
 
   @Patch(':id')
+  @UseGuards(AdministratorRoleGuard)
   update(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateMemberDto,
@@ -72,6 +75,7 @@ export class MembersController {
   }
 
   @Delete(':id')
+  @UseGuards(AdministratorRoleGuard)
   remove(
     @Param('id', ParseIntPipe) id: number,
     @Req() req: { user: { userId: number; role_name: string } },

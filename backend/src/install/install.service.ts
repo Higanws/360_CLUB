@@ -18,8 +18,8 @@ import {
   assertDatabaseHasNoBaseTables,
   buildPrismaDatabaseUrl,
   dropAllTablesInDatabase,
-  runPrismaMigrateDeploy,
 } from './prisma-install.helper';
+import { applyMvpSchemaDdl, applyMvpSeed } from './sql-install.helper';
 
 /** Evento de avance para el asistente (SSE) o logs. */
 export type InstallProgressEvent = {
@@ -51,12 +51,10 @@ function connectionErrorHint(message: string): string | undefined {
     m.includes('authentication plugin')
   ) {
     return (
-      'MariaDB en Windows a veces añade autenticación GSSAPI (auth_gssapi / auth_gssapi_client) como alternativa a la contraseña; ' +
-      'el cliente «mysql» la soporta pero Node.js (mysql2) no. ' +
-      'Ejecuta el script database/ops/mariadb-node-auth.sql con mysql.exe o HeidiSQL: hace ALTER USER … IDENTIFIED BY en cada cuenta root ' +
-      'y deja de ofrecer GSSAPI a los clientes Node. Ajusta contraseñas si no usas root/root. ' +
-      'Comprueba también todos los Host de root (consulta mysql.user) y repite ALTER si falta alguno. ' +
-      'En el asistente usa Host 127.0.0.1 si localhost sigue dando problemas.'
+      'MariaDB en Windows a veces ofrece autenticación GSSAPI (auth_gssapi); el cliente «mysql» la admite pero Node.js (mysql2) no. ' +
+      'Configura el usuario de la app con contraseña nativa (ALTER USER … IDENTIFIED BY) en tu servidor MySQL/MariaDB. ' +
+      'Comprueba todos los Host del usuario (SELECT User, Host FROM mysql.user). ' +
+      'En el asistente prueba Host 127.0.0.1 si localhost falla.'
     );
   }
   if (
@@ -133,16 +131,16 @@ export class InstallService {
   }
 
   /**
-   * Tras `prisma migrate deploy`, el SQL baseline debe haber insertado ajustes y usuarios demo
-   * antes de que el asistente sobrescriba la contraseña del administrador (id=1).
+   * Tras `seed_mvp.sql`, deben existir ajustes y usuarios demo antes de que el asistente
+   * sobrescriba la contraseña del administrador (id=1).
    */
-  private async assertBaselinePopulationAfterMigrate(conn: Connection): Promise<void> {
+  private async assertBaselinePopulationAfterSeed(conn: Connection): Promise<void> {
     const [gs] = await conn.query<RowDataPacket[]>(
       'SELECT COUNT(*) AS c FROM general_setting',
     );
     if (Number((gs as RowDataPacket[])[0]?.c ?? 0) < 1) {
       throw new BadRequestException(
-        'La población inicial no se aplicó: falta general_setting. Revisa la migración baseline Prisma.',
+        'La población inicial no se aplicó: falta general_setting. Revisa database/seed/seed_mvp.sql.',
       );
     }
     const [gm] = await conn.query<RowDataPacket[]>(
@@ -151,13 +149,13 @@ export class InstallService {
     const mc = Number((gm as RowDataPacket[])[0]?.c ?? 0);
     if (mc < 4) {
       throw new BadRequestException(
-        `La población inicial no se aplicó: gym_member tiene ${mc} fila(s); se esperaban al menos 4 (admin, staff y socios demo).`,
+        `La población inicial no se aplicó: gym_member tiene ${mc} fila(s); se esperaban al menos 4 (admin, staff y socios demo en seed_mvp.sql).`,
       );
     }
   }
 
   /**
-   * Comprueba tablas MVP, población inicial de la migración baseline, usuario admin y bcrypt.
+   * Comprueba tablas MVP, población inicial del seed SQL, usuario admin y bcrypt.
    */
   private async verifyMvpInstallation(
     conn: Connection,
@@ -195,7 +193,7 @@ export class InstallService {
     const memberCount = Number((countRows as RowDataPacket[])[0]?.c ?? 0);
     if (memberCount < 4) {
       throw new BadRequestException(
-        'Se esperaban al menos 4 usuarios demo en gym_member (admin, staff y socios). Revisa la migración baseline Prisma.',
+        'Se esperaban al menos 4 usuarios demo en gym_member (admin, staff y socios). Revisa database/seed/seed_mvp.sql.',
       );
     }
     this.logger.log(
@@ -361,7 +359,7 @@ export class InstallService {
     try {
       tick(
         'drop_tables',
-        'Eliminando todas las vistas y tablas (incl. _prisma_migrations): la base debe quedar totalmente vacía…',
+        'Eliminando todas las vistas y tablas: la base debe quedar totalmente vacía…',
       );
       this.logger.log(
         'Instalación: DROP de todas las vistas y tablas — sin restos de datos ni esquema previo.',
@@ -372,12 +370,23 @@ export class InstallService {
         'Comprobando limpieza total: 0 tablas y 0 vistas antes de crear esquema y población inicial…',
       );
       await assertDatabaseHasNoBaseTables(conn);
+      tick(
+        'schema',
+        'Creando esquema MVP desde database/schema/schema_mysql.sql…',
+      );
+      await applyMvpSchemaDdl(conn);
+      tick(
+        'seed',
+        'Insertando datos demo desde database/seed/seed_mvp.sql…',
+      );
+      await applyMvpSeed(conn);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       await conn.end().catch(() => undefined);
-      throw new BadRequestException(`No se pudo vaciar la base de datos: ${msg}`);
+      throw new BadRequestException(
+        `No se pudo preparar la base (vaciado, esquema o seed): ${msg}`,
+      );
     }
-    await conn.end();
 
     const databaseUrl = buildPrismaDatabaseUrl({
       host: dto.host,
@@ -387,41 +396,15 @@ export class InstallService {
       database: dto.database.trim(),
     });
 
-    try {
-      tick(
-        'prisma_migrate',
-        'Base vacía: aplicando migración baseline Prisma (crea tablas + población inicial demo: socios, staff, rutinas, POS, accesos…).',
-      );
-      this.logger.log(
-        'prisma migrate deploy sobre BD vacía: baseline con DDL e INSERTs de población inicial.',
-      );
-      await runPrismaMigrateDeploy(databaseUrl);
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      throw new BadRequestException(
-        `Error aplicando el esquema Prisma (migrate deploy). Comprueba prisma/migrations y el CLI de Prisma en backend/: ${msg}`,
-      );
-    }
-
-    tick('reconnect', 'Conectando de nuevo a MySQL para comprobar la población inicial y fijar el administrador…');
-    conn = await createConnection({
-      host: dto.host,
-      port: dto.port,
-      user: dto.username,
-      password: dto.password,
-      database: dto.database,
-      multipleStatements: true,
-    });
-
     const hash = await bcrypt.hash(dto.adminPassword, 10);
     const adminUser = dto.adminUsername.trim();
 
     try {
       tick(
         'poblacion',
-        'Comprobando que exista la población inicial insertada por la migración baseline…',
+        'Comprobando que exista la población inicial del seed demo…',
       );
-      await this.assertBaselinePopulationAfterMigrate(conn);
+      await this.assertBaselinePopulationAfterSeed(conn);
     } catch (e) {
       await conn.end();
       throw e instanceof BadRequestException
@@ -442,7 +425,7 @@ export class InstallService {
       );
       if ((result?.affectedRows ?? 0) === 0) {
         throw new Error(
-          'No existe la fila id=1 en gym_member tras la población inicial de la migración baseline.',
+          'No existe la fila id=1 en gym_member tras seed_mvp.sql.',
         );
       }
       await this.syncAutoIncrement(conn);
@@ -513,7 +496,7 @@ export class InstallService {
     return {
       success: true,
       message:
-        'Base vaciada por completo, población inicial aplicada con la migración baseline, administrador actualizado. Reinicia el proceso del backend (npm run start:dev) para aplicar el archivo .env.',
+        'Base vaciada, esquema y seed demo aplicados, administrador actualizado. Reinicia el proceso del backend (npm run start:dev) para aplicar el archivo .env.',
       adminUsername: adminUser,
     };
   }

@@ -9,16 +9,15 @@ import {
   Post,
   UseGuards,
 } from '@nestjs/common';
-import { AuthGuard } from '@nestjs/passport';
 import { BusinessRoleGuard } from '../members/business-role.guard';
 import { BusinessRoles } from '../members/roles.decorator';
+import { AdministratorRoleGuard } from '../staff/administrator-role.guard';
 import { CreateMembershipDto } from './dto/create-membership.dto';
 import { UpdateMembershipDto } from './dto/update-membership.dto';
-import { MembershipAdminGuard } from './membership-admin.guard';
 import { MembershipsService } from './memberships.service';
 
 @Controller('memberships')
-@UseGuards(AuthGuard('jwt'), BusinessRoleGuard)
+@UseGuards(BusinessRoleGuard, AdministratorRoleGuard)
 @BusinessRoles()
 export class MembershipsController {
   constructor(private readonly memberships: MembershipsService) {}
@@ -34,13 +33,11 @@ export class MembershipsController {
   }
 
   @Post()
-  @UseGuards(MembershipAdminGuard)
   create(@Body() dto: CreateMembershipDto) {
     return this.memberships.create(dto);
   }
 
   @Patch(':id')
-  @UseGuards(MembershipAdminGuard)
   update(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateMembershipDto,
@@ -49,7 +46,6 @@ export class MembershipsController {
   }
 
   @Delete(':id')
-  @UseGuards(MembershipAdminGuard)
   remove(@Param('id', ParseIntPipe) id: number) {
     return this.memberships.remove(id);
   }

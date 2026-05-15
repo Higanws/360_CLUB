@@ -5,27 +5,16 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { normalizeClubRole } from '../shared/domain/club/club-roles';
+import { normalizeMemberLookupToken } from '../shared/domain/club/member-lookup';
+import { toIsoDateOnly } from '../shared/domain/shared/iso-date';
 import { ClubAccessLog } from '../entities/club-access-log.entity';
 import { GeneralSetting } from '../entities/general-setting.entity';
 import { GymMember } from '../entities/gym-member.entity';
 import { MembershipPayment } from '../entities/membership-payment.entity';
 import { todayYmdMadrid } from '../member-wellness/madrid-week.util';
 
-function normRole(r: string | null | undefined): string {
-  return (r ?? '').trim().toLowerCase();
-}
-
-function isoDateOnly(v: Date | string | null | undefined): string | null {
-  if (v == null) return null;
-  if (v instanceof Date) return v.toISOString().slice(0, 10);
-  const s = String(v);
-  return s.length >= 10 ? s.slice(0, 10) : null;
-}
-
-/** Normaliza carnet / código socio (misma idea que PHP: mayúsculas y sin espacios). */
-export function normalizeMemberLookupToken(raw: string): string {
-  return raw.trim().toUpperCase().replace(/\s+/g, '');
-}
+export { normalizeMemberLookupToken } from '../shared/domain/club/member-lookup';
 
 export type AccessCheckResult = {
   valid: boolean;
@@ -72,10 +61,8 @@ export class AccessControlService {
     actor: JwtActor,
     member: GymMember,
   ): Promise<void> {
-    if (normRole(actor.role_name) !== 'staff_member') return;
-    const row = await this.settingsRow();
-    const ownOnly = row?.staff_can_view_own_member === 1;
-    if (ownOnly && member.assign_staff_mem !== actor.userId) {
+    if (normalizeClubRole(actor.role_name) !== 'staff_member') return;
+    if (member.assign_staff_mem !== actor.userId) {
       throw new ForbiddenException(
         'No puedes registrar acceso de socios que no tienes asignados.',
       );
@@ -131,8 +118,8 @@ export class AccessControlService {
       .getOne();
     if (!row?.end_date) return { end: null, start: null };
     return {
-      end: isoDateOnly(row.end_date as Date),
-      start: isoDateOnly(row.start_date as Date),
+      end: toIsoDateOnly(row.end_date as Date),
+      start: toIsoDateOnly(row.start_date as Date),
     };
   }
 
@@ -178,7 +165,7 @@ export class AccessControlService {
         valid: false,
         status: 'VENCIDO',
         message: 'Membresía marcada como caducada en el sistema.',
-        due_date: isoDateOnly(member.membership_valid_to as Date),
+        due_date: toIsoDateOnly(member.membership_valid_to as Date),
         cycle_type: '',
         days_remaining: null,
         days_overdue: null,
@@ -188,11 +175,11 @@ export class AccessControlService {
     const pay = await this.latestPaymentEnd(member.id);
     let dueDate = pay.end;
     if (!dueDate) {
-      dueDate = isoDateOnly(member.membership_valid_to as Date);
+      dueDate = toIsoDateOnly(member.membership_valid_to as Date);
     }
 
-    const vf = isoDateOnly(member.membership_valid_from as Date);
-    const vt = isoDateOnly(member.membership_valid_to as Date);
+    const vf = toIsoDateOnly(member.membership_valid_from as Date);
+    const vt = toIsoDateOnly(member.membership_valid_to as Date);
     if (vf && today < vf) {
       return {
         valid: false,
@@ -372,7 +359,7 @@ export class AccessControlService {
       throw e;
     }
 
-    const normR = normRole(member.role_name);
+    const normR = normalizeClubRole(member.role_name);
     if (normR !== 'member') {
       await persist({
         outcome: 'denied_not_member',
@@ -499,6 +486,7 @@ export class AccessControlService {
   }
 
   async recentLogs(
+    actor: JwtActor,
     limit: number,
     fromYmd?: string | null,
     toYmd?: string | null,
@@ -518,6 +506,8 @@ export class AccessControlService {
     }>
   > {
     const take = Math.min(Math.max(limit, 1), 500);
+    const settings = await this.settingsRow();
+    const ownOnly = settings?.staff_can_view_own_member === 1;
     const qb = this.logs
       .createQueryBuilder('l')
       .leftJoin(GymMember, 'm', 'm.id = l.member_id')
@@ -549,6 +539,15 @@ export class AccessControlService {
     if (to) {
       qb.andWhere('l.access_date <= :toD', { toD: to });
     }
+    if (
+      normalizeClubRole(actor.role_name) === 'staff_member' &&
+      ownOnly
+    ) {
+      qb.andWhere(
+        '(m.assign_staff_mem = :staffId OR l.staff_actor_id = :staffId)',
+        { staffId: actor.userId },
+      );
+    }
 
     const rows = await qb
       .orderBy('l.id', 'DESC')
@@ -573,7 +572,7 @@ export class AccessControlService {
         r.access_at instanceof Date
           ? r.access_at.toISOString()
           : String(r.access_at),
-      access_date: isoDateOnly(r.access_date as Date) ?? String(r.access_date),
+      access_date: toIsoDateOnly(r.access_date as Date) ?? String(r.access_date),
       outcome: r.outcome,
       status_display: r.status_display,
       lookup_raw: r.lookup_raw,

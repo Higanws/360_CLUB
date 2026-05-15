@@ -1,39 +1,146 @@
+import { lazy, Suspense, type ReactNode } from 'react';
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
+import { PageLoading } from './components/mm/PageLoading';
 import { routes } from './config/member-management';
 import { MemberManagementLayout } from './layouts/MemberManagementLayout';
-import { HomeEntry } from './pages/HomeEntry';
 import { LoginPage } from './pages/LoginPage';
-import { MemberDetailPage } from './pages/MemberDetailPage';
-import { MemberFormPage } from './pages/MemberFormPage';
+import { HomeEntry } from './pages/HomeEntry';
 import { MemberPortalLayout } from './pages/member-portal/MemberPortalLayout';
 import { MemberPortalIndex } from './pages/member-portal/MemberPortalIndex';
 import { MemberWellnessLayout } from './pages/member-portal/MemberWellnessLayout';
-import { MemberWeeklyDietPage } from './pages/member-portal/MemberWeeklyDietPage';
-import { MemberWeeklyRoutinePage } from './pages/member-portal/MemberWeeklyRoutinePage';
-import { DashboardPage } from './pages/dashboard/DashboardPage';
-import { MembersPage } from './pages/MembersPage';
-import { StaffDetailPage } from './pages/StaffDetailPage';
-import { StaffFormPage } from './pages/StaffFormPage';
-import { ManualMembershipPaymentPage } from './pages/ManualMembershipPaymentPage';
-import { MembershipPaymentsPage } from './pages/MembershipPaymentsPage';
-import { MembershipPlanFormPage } from './pages/MembershipPlanFormPage';
-import { MembershipPlansPage } from './pages/MembershipPlansPage';
-import { PosSellPage } from './pages/PosSellPage';
-import { PosSalesRegisterPage } from './pages/PosSalesRegisterPage';
-import { PosStockPage } from './pages/PosStockPage';
-import { StaffListPage } from './pages/StaffListPage';
-import { ActivitiesListPage } from './pages/activities/ActivitiesListPage';
-import { ActivityDetailPage } from './pages/activities/ActivityDetailPage';
-import { ActivityFormPage } from './pages/activities/ActivityFormPage';
-import { TrainingRoutinesListPage } from './pages/training/TrainingRoutinesListPage';
-import { TrainingRoutineFormPage } from './pages/training/TrainingRoutineFormPage';
-import { TrainingAssignmentsListPage } from './pages/training/TrainingAssignmentsListPage';
-import { TrainingAssignmentFormPage } from './pages/training/TrainingAssignmentFormPage';
-import { NutritionOverviewPage } from './pages/nutrition/NutritionOverviewPage';
-import { NutritionPlanPage } from './pages/nutrition/NutritionPlanPage';
-import { MemberPhysicalTablePage } from './pages/MemberPhysicalTablePage';
-import { AccessControlKioskPage } from './pages/access-control/AccessControlKioskPage';
-import { AccessControlLogPage } from './pages/access-control/AccessControlLogPage';
+
+const DashboardPage = lazy(() =>
+  import('./pages/dashboard/DashboardPage').then((m) => ({
+    default: m.DashboardPage,
+  })),
+);
+const MembersPage = lazy(() =>
+  import('./pages/MembersPage').then((m) => ({ default: m.MembersPage })),
+);
+const MemberDetailPage = lazy(() =>
+  import('./pages/MemberDetailPage').then((m) => ({
+    default: m.MemberDetailPage,
+  })),
+);
+const MemberFormPage = lazy(() =>
+  import('./pages/MemberFormPage').then((m) => ({ default: m.MemberFormPage })),
+);
+const MemberPhysicalTablePage = lazy(() =>
+  import('./pages/MemberPhysicalTablePage').then((m) => ({
+    default: m.MemberPhysicalTablePage,
+  })),
+);
+const StaffListPage = lazy(() =>
+  import('./pages/StaffListPage').then((m) => ({ default: m.StaffListPage })),
+);
+const StaffDetailPage = lazy(() =>
+  import('./pages/StaffDetailPage').then((m) => ({
+    default: m.StaffDetailPage,
+  })),
+);
+const StaffFormPage = lazy(() =>
+  import('./pages/StaffFormPage').then((m) => ({ default: m.StaffFormPage })),
+);
+const MembershipPlansPage = lazy(() =>
+  import('./pages/MembershipPlansPage').then((m) => ({
+    default: m.MembershipPlansPage,
+  })),
+);
+const MembershipPlanFormPage = lazy(() =>
+  import('./pages/MembershipPlanFormPage').then((m) => ({
+    default: m.MembershipPlanFormPage,
+  })),
+);
+const MembershipPaymentsPage = lazy(() =>
+  import('./pages/MembershipPaymentsPage').then((m) => ({
+    default: m.MembershipPaymentsPage,
+  })),
+);
+const ManualMembershipPaymentPage = lazy(() =>
+  import('./pages/ManualMembershipPaymentPage').then((m) => ({
+    default: m.ManualMembershipPaymentPage,
+  })),
+);
+const PosSellPage = lazy(() =>
+  import('./pages/PosSellPage').then((m) => ({ default: m.PosSellPage })),
+);
+const PosSalesRegisterPage = lazy(() =>
+  import('./pages/PosSalesRegisterPage').then((m) => ({
+    default: m.PosSalesRegisterPage,
+  })),
+);
+const PosStockPage = lazy(() =>
+  import('./pages/PosStockPage').then((m) => ({ default: m.PosStockPage })),
+);
+const ActivitiesListPage = lazy(() =>
+  import('./pages/activities/ActivitiesListPage').then((m) => ({
+    default: m.ActivitiesListPage,
+  })),
+);
+const ActivityDetailPage = lazy(() =>
+  import('./pages/activities/ActivityDetailPage').then((m) => ({
+    default: m.ActivityDetailPage,
+  })),
+);
+const ActivityFormPage = lazy(() =>
+  import('./pages/activities/ActivityFormPage').then((m) => ({
+    default: m.ActivityFormPage,
+  })),
+);
+const TrainingRoutinesListPage = lazy(() =>
+  import('./pages/training/TrainingRoutinesListPage').then((m) => ({
+    default: m.TrainingRoutinesListPage,
+  })),
+);
+const TrainingRoutineFormPage = lazy(() =>
+  import('./pages/training/TrainingRoutineFormPage').then((m) => ({
+    default: m.TrainingRoutineFormPage,
+  })),
+);
+const TrainingAssignmentsListPage = lazy(() =>
+  import('./pages/training/TrainingAssignmentsListPage').then((m) => ({
+    default: m.TrainingAssignmentsListPage,
+  })),
+);
+const TrainingAssignmentFormPage = lazy(() =>
+  import('./pages/training/TrainingAssignmentFormPage').then((m) => ({
+    default: m.TrainingAssignmentFormPage,
+  })),
+);
+const NutritionOverviewPage = lazy(() =>
+  import('./pages/nutrition/NutritionOverviewPage').then((m) => ({
+    default: m.NutritionOverviewPage,
+  })),
+);
+const NutritionPlanPage = lazy(() =>
+  import('./pages/nutrition/NutritionPlanPage').then((m) => ({
+    default: m.NutritionPlanPage,
+  })),
+);
+const AccessControlKioskPage = lazy(() =>
+  import('./pages/access-control/AccessControlKioskPage').then((m) => ({
+    default: m.AccessControlKioskPage,
+  })),
+);
+const AccessControlLogPage = lazy(() =>
+  import('./pages/access-control/AccessControlLogPage').then((m) => ({
+    default: m.AccessControlLogPage,
+  })),
+);
+const MemberWeeklyDietPage = lazy(() =>
+  import('./pages/member-portal/MemberWeeklyDietPage').then((m) => ({
+    default: m.MemberWeeklyDietPage,
+  })),
+);
+const MemberWeeklyRoutinePage = lazy(() =>
+  import('./pages/member-portal/MemberWeeklyRoutinePage').then((m) => ({
+    default: m.MemberWeeklyRoutinePage,
+  })),
+);
+
+function LazyPage({ children }: { children: ReactNode }) {
+  return <Suspense fallback={<PageLoading />}>{children}</Suspense>;
+}
 
 function GestActividadesToEjercicios() {
   const loc = useLocation();
@@ -48,51 +155,175 @@ export default function App() {
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route path="/home" element={<HomeEntry />} />
-      <Route path="/recepcion/control-acceso" element={<AccessControlKioskPage />} />
+      <Route
+        path="/recepcion/control-acceso"
+        element={
+          <LazyPage>
+            <AccessControlKioskPage />
+          </LazyPage>
+        }
+      />
 
       <Route path="/socio" element={<MemberPortalLayout />}>
         <Route index element={<MemberPortalIndex />} />
         <Route path="nutricion-ejercicio" element={<MemberWellnessLayout />}>
           <Route index element={<Navigate to="dieta" replace />} />
-          <Route path="dieta" element={<MemberWeeklyDietPage />} />
-          <Route path="rutina" element={<MemberWeeklyRoutinePage />} />
+          <Route
+            path="dieta"
+            element={
+              <LazyPage>
+                <MemberWeeklyDietPage />
+              </LazyPage>
+            }
+          />
+          <Route
+            path="rutina"
+            element={
+              <LazyPage>
+                <MemberWeeklyRoutinePage />
+              </LazyPage>
+            }
+          />
         </Route>
       </Route>
 
       <Route path="/gestion" element={<MemberManagementLayout />}>
         <Route index element={<Navigate to="dashboard" replace />} />
-        <Route path="dashboard" element={<DashboardPage />} />
+        <Route
+          path="dashboard"
+          element={
+            <LazyPage>
+              <DashboardPage />
+            </LazyPage>
+          }
+        />
         <Route path="socios">
-          <Route index element={<MembersPage />} />
-          <Route path="nuevo" element={<MemberFormPage mode="create" />} />
+          <Route
+            index
+            element={
+              <LazyPage>
+                <MembersPage />
+              </LazyPage>
+            }
+          />
+          <Route
+            path="nuevo"
+            element={
+              <LazyPage>
+                <MemberFormPage mode="create" />
+              </LazyPage>
+            }
+          />
           <Route
             path=":id/tabla-fisica"
-            element={<MemberPhysicalTablePage />}
+            element={
+              <LazyPage>
+                <MemberPhysicalTablePage />
+              </LazyPage>
+            }
           />
-          <Route path=":id/edit" element={<MemberFormPage mode="edit" />} />
-          <Route path=":id" element={<MemberDetailPage />} />
+          <Route
+            path=":id/edit"
+            element={
+              <LazyPage>
+                <MemberFormPage mode="edit" />
+              </LazyPage>
+            }
+          />
+          <Route
+            path=":id"
+            element={
+              <LazyPage>
+                <MemberDetailPage />
+              </LazyPage>
+            }
+          />
         </Route>
         <Route path="personal">
-          <Route index element={<StaffListPage />} />
-          <Route path="nuevo" element={<StaffFormPage mode="create" />} />
-          <Route path=":id/edit" element={<StaffFormPage mode="edit" />} />
-          <Route path=":id" element={<StaffDetailPage />} />
+          <Route
+            index
+            element={
+              <LazyPage>
+                <StaffListPage />
+              </LazyPage>
+            }
+          />
+          <Route
+            path="nuevo"
+            element={
+              <LazyPage>
+                <StaffFormPage mode="create" />
+              </LazyPage>
+            }
+          />
+          <Route
+            path=":id/edit"
+            element={
+              <LazyPage>
+                <StaffFormPage mode="edit" />
+              </LazyPage>
+            }
+          />
+          <Route
+            path=":id"
+            element={
+              <LazyPage>
+                <StaffDetailPage />
+              </LazyPage>
+            }
+          />
         </Route>
         <Route path="membresias">
-          <Route index element={<MembershipPlansPage />} />
-          <Route path="nuevo" element={<MembershipPlanFormPage mode="create" />} />
-          <Route path=":id/edit" element={<MembershipPlanFormPage mode="edit" />} />
+          <Route
+            index
+            element={
+              <LazyPage>
+                <MembershipPlansPage />
+              </LazyPage>
+            }
+          />
+          <Route
+            path="nuevo"
+            element={
+              <LazyPage>
+                <MembershipPlanFormPage mode="create" />
+              </LazyPage>
+            }
+          />
+          <Route
+            path=":id/edit"
+            element={
+              <LazyPage>
+                <MembershipPlanFormPage mode="edit" />
+              </LazyPage>
+            }
+          />
         </Route>
         <Route path="cobro/membresias">
-          <Route index element={<MembershipPaymentsPage />} />
+          <Route
+            index
+            element={
+              <LazyPage>
+                <MembershipPaymentsPage />
+              </LazyPage>
+            }
+          />
           <Route
             path="registrar"
-            element={<ManualMembershipPaymentPage />}
+            element={
+              <LazyPage>
+                <ManualMembershipPaymentPage />
+              </LazyPage>
+            }
           />
         </Route>
         <Route
           path="control-acceso/registro"
-          element={<AccessControlLogPage />}
+          element={
+            <LazyPage>
+              <AccessControlLogPage />
+            </LazyPage>
+          }
         />
         <Route
           path="control-acceso"
@@ -104,36 +335,137 @@ export default function App() {
         />
         <Route
           path="pago/membresia/registrar"
-          element={<Navigate to="/gestion/cobro/membresias/registrar" replace />}
+          element={
+            <Navigate to="/gestion/cobro/membresias/registrar" replace />
+          }
         />
-        <Route path="punto-venta/vender" element={<PosSellPage />} />
-        <Route path="punto-venta/ventas" element={<PosSalesRegisterPage />} />
-        <Route path="punto-venta/stock" element={<PosStockPage />} />
+        <Route
+          path="punto-venta/vender"
+          element={
+            <LazyPage>
+              <PosSellPage />
+            </LazyPage>
+          }
+        />
+        <Route
+          path="punto-venta/ventas"
+          element={
+            <LazyPage>
+              <PosSalesRegisterPage />
+            </LazyPage>
+          }
+        />
+        <Route
+          path="punto-venta/stock"
+          element={
+            <LazyPage>
+              <PosStockPage />
+            </LazyPage>
+          }
+        />
         <Route path="actividades/*" element={<GestActividadesToEjercicios />} />
         <Route path="ejercicios">
-          <Route index element={<ActivitiesListPage />} />
-          <Route path="nuevo" element={<ActivityFormPage mode="create" />} />
-          <Route path=":id/edit" element={<ActivityFormPage mode="edit" />} />
-          <Route path=":id" element={<ActivityDetailPage />} />
-        </Route>
-        <Route path="nutricion">
-          <Route index element={<NutritionOverviewPage />} />
-          <Route path="nuevo" element={<NutritionPlanPage />} />
-          <Route path=":memberId" element={<NutritionPlanPage />} />
-        </Route>
-        <Route path="rutinas">
-          <Route index element={<TrainingRoutinesListPage />} />
+          <Route
+            index
+            element={
+              <LazyPage>
+                <ActivitiesListPage />
+              </LazyPage>
+            }
+          />
           <Route
             path="nuevo"
-            element={<TrainingRoutineFormPage mode="create" />}
+            element={
+              <LazyPage>
+                <ActivityFormPage mode="create" />
+              </LazyPage>
+            }
+          />
+          <Route
+            path=":id/edit"
+            element={
+              <LazyPage>
+                <ActivityFormPage mode="edit" />
+              </LazyPage>
+            }
+          />
+          <Route
+            path=":id"
+            element={
+              <LazyPage>
+                <ActivityDetailPage />
+              </LazyPage>
+            }
+          />
+        </Route>
+        <Route path="nutricion">
+          <Route
+            index
+            element={
+              <LazyPage>
+                <NutritionOverviewPage />
+              </LazyPage>
+            }
+          />
+          <Route
+            path="nuevo"
+            element={
+              <LazyPage>
+                <NutritionPlanPage />
+              </LazyPage>
+            }
+          />
+          <Route
+            path=":memberId"
+            element={
+              <LazyPage>
+                <NutritionPlanPage />
+              </LazyPage>
+            }
+          />
+        </Route>
+        <Route path="rutinas">
+          <Route
+            index
+            element={
+              <LazyPage>
+                <TrainingRoutinesListPage />
+              </LazyPage>
+            }
+          />
+          <Route
+            path="nuevo"
+            element={
+              <LazyPage>
+                <TrainingRoutineFormPage mode="create" />
+              </LazyPage>
+            }
           />
           <Route path="asignaciones">
-            <Route index element={<TrainingAssignmentsListPage />} />
-            <Route path="nuevo" element={<TrainingAssignmentFormPage />} />
+            <Route
+              index
+              element={
+                <LazyPage>
+                  <TrainingAssignmentsListPage />
+                </LazyPage>
+              }
+            />
+            <Route
+              path="nuevo"
+              element={
+                <LazyPage>
+                  <TrainingAssignmentFormPage />
+                </LazyPage>
+              }
+            />
           </Route>
           <Route
             path=":id/edit"
-            element={<TrainingRoutineFormPage mode="edit" />}
+            element={
+              <LazyPage>
+                <TrainingRoutineFormPage mode="edit" />
+              </LazyPage>
+            }
           />
         </Route>
       </Route>

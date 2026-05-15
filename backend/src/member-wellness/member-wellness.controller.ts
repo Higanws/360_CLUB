@@ -1,22 +1,11 @@
-import {
-  Body,
-  Controller,
-  Get,
-  Patch,
-  Query,
-  Req,
-  UseGuards,
-} from '@nestjs/common';
-import { AuthGuard } from '@nestjs/passport';
+import { Controller, Get, Query, Req } from '@nestjs/common';
 import { MemberPreviewQueryDto } from './dto/member-preview-query.dto';
-import { PatchWeeklyRoutineDto } from './dto/patch-weekly-routine.dto';
 import { WeeklyRoutineQueryDto } from './dto/weekly-routine-query.dto';
 import { MemberWellnessService } from './member-wellness.service';
 
 type JwtReq = { user: { userId: number; role_name: string } };
 
 @Controller('member-wellness')
-@UseGuards(AuthGuard('jwt'))
 export class MemberWellnessController {
   constructor(private readonly wellness: MemberWellnessService) {}
 
@@ -36,10 +25,5 @@ export class MemberWellnessController {
     @Query() q: WeeklyRoutineQueryDto,
   ) {
     return this.wellness.getWeeklyRoutine(req.user, q.week_start, q.member_id);
-  }
-
-  @Patch('weekly-routine')
-  patchWeeklyRoutine(@Req() req: JwtReq, @Body() dto: PatchWeeklyRoutineDto) {
-    return this.wellness.patchWeeklyRoutine(req.user, dto);
   }
 }

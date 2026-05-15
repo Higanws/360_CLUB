@@ -4,7 +4,17 @@ import helmet from 'helmet';
 import { AppModule } from './app.module';
 import { isInstallComplete } from './install/install-state';
 
+function assertProductionSecrets(): void {
+  if (process.env.NODE_ENV !== 'production') {
+    return;
+  }
+  if (!process.env.JWT_SECRET?.trim()) {
+    throw new Error('JWT_SECRET es obligatorio cuando NODE_ENV=production.');
+  }
+}
+
 async function bootstrap() {
+  assertProductionSecrets();
   const app = await NestFactory.create(AppModule);
 
   app.use(helmet());

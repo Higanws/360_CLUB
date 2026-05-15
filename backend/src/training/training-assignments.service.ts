@@ -6,16 +6,15 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
+import { GeneralSetting } from '../entities/general-setting.entity';
 import { GymMember } from '../entities/gym-member.entity';
 import { TrainingAssignment } from '../entities/training-assignment.entity';
 import { TrainingAssignmentMember } from '../entities/training-assignment-member.entity';
 import { TrainingAssignmentTrainer } from '../entities/training-assignment-trainer.entity';
 import { TrainingRoutine } from '../entities/training-routine.entity';
+import { normalizeClubRole } from '../shared/domain/club/club-roles';
+import { staffMustUseOwnMembersOnly } from '../shared/application/security/staff-member-scope';
 import { CreateTrainingAssignmentDto } from './dto/create-training-assignment.dto';
-
-function normRole(r: string | null | undefined): string {
-  return (r ?? '').trim().toLowerCase();
-}
 
 function memberDisplayName(m: GymMember | undefined): string {
   if (!m) return '—';
@@ -37,9 +36,27 @@ export class TrainingAssignmentsService {
     private readonly routines: Repository<TrainingRoutine>,
     @InjectRepository(GymMember)
     private readonly members: Repository<GymMember>,
+    @InjectRepository(GeneralSetting)
+    private readonly settings: Repository<GeneralSetting>,
   ) {}
 
-  async list() {
+  private canViewAssignment(
+    a: TrainingAssignment,
+    actor: { userId: number; role_name: string },
+  ): boolean {
+    const ar = normalizeClubRole(actor.role_name);
+    if (ar === 'administrator') return true;
+    if (ar !== 'staff_member') return false;
+    if (!staffMustUseOwnMembersOnly(actor)) return true;
+    const trainers = a.trainers ?? [];
+    if (trainers.some((t) => t.trainer_member_id === actor.userId)) {
+      return true;
+    }
+    const members = a.members ?? [];
+    return members.some((m) => m.member?.assign_staff_mem === actor.userId);
+  }
+
+  async list(actor: { userId: number; role_name: string }) {
     const rows = await this.assignments.find({
       relations: [
         'routine',
@@ -50,7 +67,8 @@ export class TrainingAssignmentsService {
       ],
       order: { id: 'DESC' },
     });
-    return rows.map((a) => ({
+    const visible = rows.filter((a) => this.canViewAssignment(a, actor));
+    return visible.map((a) => ({
       id: a.id,
       routine_id: a.routine_id,
       routine_title: a.routine?.title ?? '',
@@ -68,7 +86,10 @@ export class TrainingAssignmentsService {
     }));
   }
 
-  async getOne(id: number) {
+  async getOne(
+    id: number,
+    actor: { userId: number; role_name: string },
+  ) {
     const a = await this.assignments.findOne({
       where: { id },
       relations: [
@@ -80,6 +101,9 @@ export class TrainingAssignmentsService {
       ],
     });
     if (!a) throw new NotFoundException('Asignación no encontrada.');
+    if (!this.canViewAssignment(a, actor)) {
+      throw new ForbiddenException('No tienes acceso a esta asignación.');
+    }
     return {
       id: a.id,
       routine_id: a.routine_id,
@@ -140,10 +164,14 @@ export class TrainingAssignmentsService {
       ),
     );
 
-    return this.getOne(saved.id);
+    return this.getOne(saved.id, actor);
   }
 
-  async remove(id: number): Promise<void> {
+  async remove(
+    id: number,
+    actor: { userId: number; role_name: string },
+  ): Promise<void> {
+    await this.getOne(id, actor);
     const res = await this.assignments.delete({ id });
     if (!res.affected) throw new NotFoundException('Asignación no encontrada.');
   }
@@ -157,12 +185,11 @@ export class TrainingAssignmentsService {
       throw new BadRequestException('Algún socio no existe.');
     }
     for (const m of rows) {
-      if (normRole(m.role_name) !== 'member') {
+      if (normalizeClubRole(m.role_name) !== 'member') {
         throw new BadRequestException(`El usuario ${m.id} no es un socio.`);
       }
     }
-    const ar = normRole(actor.role_name);
-    if (ar === 'staff_member') {
+    if (staffMustUseOwnMembersOnly(actor)) {
       for (const m of rows) {
         if (m.assign_staff_mem !== actor.userId) {
           throw new ForbiddenException(
@@ -177,7 +204,7 @@ export class TrainingAssignmentsService {
     ids: number[],
     actor: { userId: number; role_name: string },
   ): Promise<void> {
-    const ar = normRole(actor.role_name);
+    const ar = normalizeClubRole(actor.role_name);
     if (ar === 'staff_member') {
       for (const id of ids) {
         if (id !== actor.userId) {
@@ -192,7 +219,7 @@ export class TrainingAssignmentsService {
       throw new BadRequestException('Algún entrenador no existe.');
     }
     for (const m of rows) {
-      if (normRole(m.role_name) !== 'staff_member') {
+      if (normalizeClubRole(m.role_name) !== 'staff_member') {
         throw new BadRequestException(
           `El usuario ${m.id} no es miembro del personal entrenador.`,
         );

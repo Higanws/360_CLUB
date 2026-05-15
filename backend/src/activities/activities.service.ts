@@ -14,11 +14,8 @@ import { GymMember } from '../entities/gym-member.entity';
 import { CreateActivityCategoryDto } from './dto/create-activity-category.dto';
 import { CreateActivityDto } from './dto/create-activity.dto';
 import { UpdateActivityDto } from './dto/update-activity.dto';
+import { normalizeClubRole } from '../shared/domain/club/club-roles';
 import { normalizeActivityDifficulty } from './activity-difficulty';
-
-function normRole(r: string | null | undefined): string {
-  return (r ?? '').trim().toLowerCase();
-}
 
 function normUrls(urls: string[]): string[] {
   const out: string[] = [];
@@ -222,7 +219,7 @@ export class ActivitiesService {
     ids: number[],
     actor: { userId: number; role_name: string },
   ): Promise<void> {
-    const ar = normRole(actor.role_name);
+    const ar = normalizeClubRole(actor.role_name);
     if (ar === 'staff_member') {
       for (const id of ids) {
         if (id !== actor.userId) {
@@ -237,7 +234,7 @@ export class ActivitiesService {
       throw new BadRequestException('Algún entrenador no existe.');
     }
     for (const m of rows) {
-      if (normRole(m.role_name) !== 'staff_member') {
+      if (normalizeClubRole(m.role_name) !== 'staff_member') {
         throw new BadRequestException(
           `El miembro ${m.id} no es personal entrenador.`,
         );
