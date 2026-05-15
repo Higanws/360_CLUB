@@ -1,0 +1,13 @@
+{
+  "name": "club360-recreacion",
+  "private": true,
+  "description": "Scripts de arranque local (MariaDB/MySQL instalado en el equipo; sin Docker).",
+  "scripts": {
+    "mysql": "node -e \"console.log('\\n[Club360] Base de datos: MariaDB o MySQL en localhost (sin Docker).\\n- Arranca el servicio de MariaDB.\\n- Crea la base y usuario según tu entorno; ajusta backend/.env (DATABASE_HOST, DATABASE_PORT, DATABASE_USER, DATABASE_PASSWORD, DATABASE_NAME y DATABASE_URL para Prisma).\\n- Esquema de referencia: database/schema/schema_mysql.sql\\n\\nNo se ejecuta Docker desde este script.\\n')\"",
+    "local": "powershell -NoProfile -ExecutionPolicy Bypass -File ./club360.ps1",
+    "api": "npm run start:dev --prefix backend",
+    "api:local": "npm run start:dev:local --prefix backend",
+    "web": "npm run dev --prefix frontend",
+    "build": "npm run build --prefix backend && npm run build --prefix frontend"
+  }
+}

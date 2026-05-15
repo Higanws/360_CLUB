@@ -1,0 +1,26 @@
+# Dependencias y builds
+node_modules/
+**/node_modules/
+dist/
+**/dist/
+dist-ssr/
+*.tsbuildinfo
+
+# Entorno y secretos
+.env
+.env.*
+!.env.example
+backend/.env
+backend/data/installed.txt
+backend/data/.installed
+
+# Logs y sistema
+*.log
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# Prisma generado (se regenera con prisma generate)
+backend/node_modules/.prisma/
