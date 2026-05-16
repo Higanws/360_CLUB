@@ -2,10 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { routes } from '../../config/member-management';
 import { api } from '../../lib/api';
-import {
-  extractYoutubeVideoId,
-  youtubeEmbedUrl,
-} from '../../lib/youtube';
+import { ActivityYoutubeEmbed } from '../../components/ActivityYoutubeEmbed';
 import { activityDifficultyLabel } from '../../lib/activity-difficulty';
 import { useAuth } from '../../context/AuthContext';
 
@@ -118,42 +115,22 @@ export function ActivityDetailPage() {
           </section>
 
           <section className="activity-detail-block">
-            <h2>Vídeos (YouTube)</h2>
+            <h2>Vídeos</h2>
             <p className="muted small">
-              Los vídeos se reproducen desde YouTube; no se almacenan archivos
-              en el servidor.
+              Se incrustan en la página; no se almacenan archivos en el servidor.
             </p>
             {data.videos.length === 0 ? (
               <p className="muted">Sin enlaces.</p>
             ) : (
               <div className="activity-video-grid">
-                {data.videos.map((v) => {
-                  const vid = extractYoutubeVideoId(v.url);
-                  return (
-                    <div key={v.id} className="activity-video-card">
-                      <p className="activity-video-url">
-                        <a href={v.url} target="_blank" rel="noreferrer">
-                          {v.url}
-                        </a>
-                      </p>
-                      {vid ? (
-                        <div className="activity-video-embed">
-                          <iframe
-                            title={`YouTube ${vid}`}
-                            src={youtubeEmbedUrl(vid)}
-                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                            allowFullScreen
-                          />
-                        </div>
-                      ) : (
-                        <p className="muted small">
-                          Enlace no reconocido como YouTube; ábrelo en nueva
-                          pestaña.
-                        </p>
-                      )}
-                    </div>
-                  );
-                })}
+                {data.videos.map((v) => (
+                  <div key={v.id} className="activity-video-card">
+                    <ActivityYoutubeEmbed
+                      url={v.url}
+                      iframeTitle={`${data.title} — vídeo`}
+                    />
+                  </div>
+                ))}
               </div>
             )}
           </section>

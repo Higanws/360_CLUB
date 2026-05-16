@@ -75,6 +75,75 @@
   resize: vertical;
 }
 
+.nutrition-cal-cell-tools {
+  margin-top: 0.35rem;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.nutrition-cal-detail-btn {
+  font-size: 0.7rem;
+  padding: 0.2rem 0.45rem;
+  white-space: nowrap;
+}
+
+.nutrition-plan-detail-modal .nutrition-plan-detail-body {
+  padding: 0.75rem 1rem 1rem;
+  max-height: min(70vh, 560px);
+  overflow-y: auto;
+}
+
+.nutrition-plan-detail-label {
+  display: block;
+  margin-bottom: 0.75rem;
+  font-size: 0.88rem;
+}
+
+.nutrition-plan-detail-input,
+.nutrition-plan-detail-textarea {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: 0.25rem;
+  padding: 0.45rem 0.5rem;
+  border-radius: 6px;
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.16));
+  background: var(--bg-page, #0f1218);
+  color: inherit;
+  font: inherit;
+}
+
+.nutrition-plan-detail-textarea {
+  min-height: 5rem;
+  resize: vertical;
+}
+
+.nutrition-plan-detail-ingredients {
+  margin-top: 0.75rem;
+}
+
+.nutrition-plan-ingredient-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+  margin-bottom: 0.45rem;
+}
+
+.nutrition-plan-ingredient-row .nutrition-plan-detail-input {
+  flex: 1 1 120px;
+  margin-top: 0;
+}
+
+.nutrition-plan-detail-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 1rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border, rgba(255, 255, 255, 0.1));
+}
+
 .nutrition-cal-cell-readonly {
   display: block;
   min-height: 5.5rem;

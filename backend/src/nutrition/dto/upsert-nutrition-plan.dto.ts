@@ -11,7 +11,18 @@ import {
   ValidateNested,
 } from 'class-validator';
 
-/** Una franja de la semana tipo: día (0=dom…6=sáb), hora 5–23, texto del evento. */
+/** Ingrediente con cantidad sugerida para el platillo. */
+export class NutritionIngredientLineDto {
+  @IsString()
+  @MaxLength(200)
+  name: string;
+
+  @IsString()
+  @MaxLength(200)
+  quantity: string;
+}
+
+/** Una franja de la semana tipo: día (0=dom…6=sáb), hora 5–23, evento + detalle de platillo. */
 export class NutritionScheduleSlotDto {
   @IsInt()
   @Min(0)
@@ -26,6 +37,17 @@ export class NutritionScheduleSlotDto {
   @IsString()
   @MaxLength(8000)
   event: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(4000)
+  dish?: string | null;
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => NutritionIngredientLineDto)
+  ingredients?: NutritionIngredientLineDto[] | null;
 }
 
 export class UpsertNutritionPlanDto {

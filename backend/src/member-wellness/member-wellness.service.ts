@@ -17,6 +17,7 @@ import {
   isMondayYmdInMadrid,
   madridMondayWeekStart,
 } from './madrid-week.util';
+import { normalizeActivityDifficulty } from '../activities/activity-difficulty';
 import { normalizeClubRole } from '../shared/domain/club/club-roles';
 import { assertStaffOwnsMember } from '../shared/application/security/staff-member-scope';
 import { toIsoDateOnly } from '../shared/domain/shared/iso-date';
@@ -170,10 +171,13 @@ export class MemberWellnessService {
         id: number;
         activity_id: number;
         title: string;
+        description: string | null;
+        difficulty_level: string;
         sort_order: number;
         weight_kg: number | null;
         weekdays_mask: number;
         day_keys: string[];
+        videos: { id: number; url: string; sort_order: number }[];
       }>;
     };
   }> {
@@ -185,7 +189,12 @@ export class MemberWellnessService {
       .leftJoinAndSelect('a.routine', 'r')
       .leftJoinAndSelect('r.lines', 'l')
       .leftJoinAndSelect('l.activity', 'act')
+      .leftJoinAndSelect('act.videos', 'av')
       .orderBy('a.id', 'DESC')
+      .addOrderBy('l.sort_order', 'ASC')
+      .addOrderBy('l.id', 'ASC')
+      .addOrderBy('av.sort_order', 'ASC')
+      .addOrderBy('av.id', 'ASC')
       .take(1)
       .getOne();
 
@@ -208,15 +217,30 @@ export class MemberWellnessService {
           a.created_at instanceof Date
             ? a.created_at.toISOString()
             : String(a.created_at),
-        lines: lines.map((l) => ({
-          id: l.id,
-          activity_id: l.activity_id,
-          title: l.activity?.title ?? `Ejercicio ${l.activity_id}`,
-          sort_order: l.sort_order,
-          weight_kg: l.weight_kg ?? null,
-          weekdays_mask: l.weekdays_mask,
-          day_keys: dayKeysFromMask(l.weekdays_mask),
-        })),
+        lines: lines.map((l) => {
+          const vids = [...(l.activity?.videos ?? [])].sort((x, y) => {
+            if (x.sort_order !== y.sort_order) return x.sort_order - y.sort_order;
+            return x.id - y.id;
+          });
+          return {
+            id: l.id,
+            activity_id: l.activity_id,
+            title: l.activity?.title ?? `Ejercicio ${l.activity_id}`,
+            description: l.activity?.description ?? null,
+            difficulty_level: normalizeActivityDifficulty(
+              l.activity?.difficulty_level,
+            ),
+            sort_order: l.sort_order,
+            weight_kg: l.weight_kg ?? null,
+            weekdays_mask: l.weekdays_mask,
+            day_keys: dayKeysFromMask(l.weekdays_mask),
+            videos: vids.map((v) => ({
+              id: v.id,
+              url: v.url,
+              sort_order: v.sort_order,
+            })),
+          };
+        }),
       },
     };
   }

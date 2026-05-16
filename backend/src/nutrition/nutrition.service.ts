@@ -16,6 +16,7 @@ import { toIsoDateOnly } from '../shared/domain/shared/iso-date';
 import {
   dedupeNutritionSlots,
   parseMealsScheduleJson,
+  type NutritionIngredientLine,
   type NutritionScheduleSlot,
 } from './schedule-json.util';
 
@@ -56,10 +57,28 @@ function normalizeSlotsFromDto(dto: UpsertNutritionPlanDto): NutritionScheduleSl
         'Cada franja debe tener weekday 0–6 y hour 5–23.',
       );
     }
+    const dishPart = (r.dish ?? '').trim();
+    const dish = dishPart ? dishPart.slice(0, 4000) : null;
+    let ingredients: NutritionIngredientLine[] | null = null;
+    if (Array.isArray(r.ingredients)) {
+      const ing: NutritionIngredientLine[] = [];
+      for (const row of r.ingredients) {
+        const name = String(row?.name ?? '').trim().slice(0, 200);
+        if (!name) continue;
+        ing.push({
+          name,
+          quantity: String(row?.quantity ?? '').trim().slice(0, 200),
+        });
+        if (ing.length >= 100) break;
+      }
+      if (ing.length) ingredients = ing;
+    }
     out.push({
       weekday: r.weekday,
       hour: r.hour,
       event: event.slice(0, 8000),
+      dish,
+      ingredients,
     });
   }
   return dedupeSlots(out);

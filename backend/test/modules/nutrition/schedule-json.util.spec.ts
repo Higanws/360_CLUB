@@ -15,6 +15,26 @@ describe('nutrition / schedule-json.util', () => {
     expect(slots[0].event).toBe('Otro');
   });
 
+  it('parsea dish e ingredientes opcionales', () => {
+    const raw = JSON.stringify([
+      {
+        weekday: 1,
+        hour: 8,
+        event: 'Desayuno',
+        dish: 'Bowl de yogur',
+        ingredients: [
+          { name: 'Yogur', quantity: '200 g' },
+          { name: 'Avena', quantity: '40 g' },
+        ],
+      },
+    ]);
+    const slots = parseMealsScheduleJson(raw);
+    expect(slots).toHaveLength(1);
+    expect(slots[0].dish).toBe('Bowl de yogur');
+    expect(slots[0].ingredients).toHaveLength(2);
+    expect(slots[0].ingredients?.[0].name).toBe('Yogur');
+  });
+
   it('dedupeNutritionSlots ordena por día y hora', () => {
     const out = dedupeNutritionSlots([
       { weekday: 2, hour: 10, event: 'B' },

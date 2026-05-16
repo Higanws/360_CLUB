@@ -5,6 +5,7 @@
 --   admin     → admin      (el wizard sobrescribe id=1 con la del asistente)
 --   staff     → staff
 --   ana_member / luis_member → member123
+-- Vídeos demo: activity_video usa YouTube (ej. v=TAH8RxOS0VI) para iframes en portal y gestión.
 
 SET NAMES utf8mb4;
 
@@ -62,7 +63,8 @@ INSERT INTO `activity` (`id`, `category_id`, `title`, `description`, `difficulty
 (2, 1, 'Remo con mancuerna', 'Unilateral', 'media');
 
 INSERT INTO `activity_video` (`id`, `activity_id`, `url`, `sort_order`) VALUES
-(1, 1, 'https://example.com/videos/press-banca-demo.mp4', 0);
+(1, 1, 'https://www.youtube.com/watch?v=TAH8RxOS0VI', 0),
+(2, 2, 'https://www.youtube.com/watch?v=TAH8RxOS0VI', 0);
 
 INSERT INTO `activity_trainer` (`id`, `activity_id`, `trainer_member_id`) VALUES
 (1, 1, 2),
@@ -112,7 +114,7 @@ INSERT INTO `nutrition_plan` (`id`, `member_id`, `valid_from`, `valid_to`, `meal
 (1, 3, CURDATE(), DATE_ADD(CURDATE(), INTERVAL 90 DAY), NULL),
 (
   2, 4, CURDATE(), DATE_ADD(CURDATE(), INTERVAL 90 DAY),
-  '[{"weekday":1,"hour":8,"event":"Desayuno proteico"},{"weekday":1,"hour":13,"event":"Almuerzo balanceado"},{"weekday":1,"hour":20,"event":"Cena ligera"},{"weekday":3,"hour":8,"event":"Desayuno"},{"weekday":5,"hour":13,"event":"Almuerzo pre-entreno"}]'
+  '[{"weekday":1,"hour":8,"event":"Desayuno proteico","dish":"Bowl de yogur griego con avena y frutos rojos.","ingredients":[{"name":"Yogur griego natural","quantity":"200 g"},{"name":"Avena en hojuelas","quantity":"40 g"},{"name":"Arándanos congelados","quantity":"50 g"}]},{"weekday":1,"hour":13,"event":"Almuerzo balanceado","dish":"Ensalada de pollo a la plancha con quinoa y aguacate.","ingredients":[{"name":"Pechuga de pollo","quantity":"150 g"},{"name":"Quinoa cocida","quantity":"80 g"},{"name":"Aguacate","quantity":"60 g"},{"name":"Mix de hojas verdes","quantity":"100 g"}]},{"weekday":1,"hour":20,"event":"Cena ligera","dish":"Sopa de verduras casera con huevo.","ingredients":[{"name":"Caldo de verduras","quantity":"350 ml"},{"name":"Huevo","quantity":"1 unidad"},{"name":"Verduras mixtas","quantity":"150 g"}]},{"weekday":3,"hour":8,"event":"Desayuno"},{"weekday":5,"hour":13,"event":"Almuerzo pre-entreno"}]'
 );
 
 INSERT INTO `member_weekly_routine` (`id`, `member_id`, `week_start`, `routine_snapshot_json`) VALUES

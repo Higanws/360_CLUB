@@ -303,7 +303,7 @@ CREATE TABLE IF NOT EXISTS `nutrition_plan` (
   `member_id` int NOT NULL,
   `valid_from` date DEFAULT NULL,
   `valid_to` date DEFAULT NULL,
-  `meals_schedule_json` longtext DEFAULT NULL COMMENT 'JSON [{weekday,hour,event}]',
+  `meals_schedule_json` longtext DEFAULT NULL COMMENT 'JSON [{weekday,hour,event,dish?,ingredients?[{name,qty}]}]',
   `created_at` datetime DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_nutrition_plan_member` (`member_id`),

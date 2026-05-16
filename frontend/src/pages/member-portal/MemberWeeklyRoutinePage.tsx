@@ -1,10 +1,12 @@
 import axios from 'axios';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { ActivityYoutubeEmbed } from '../../components/ActivityYoutubeEmbed';
+import { useAuth } from '../../context/AuthContext';
 import { api } from '../../lib/api';
+import { activityDifficultyLabel } from '../../lib/activity-difficulty';
 import { extractApiMessage } from '../../lib/extract-api-message';
 import { isPortalPreviewRole } from '../../lib/member-wellness-params';
-import { useAuth } from '../../context/AuthContext';
 
 const DAY_KEYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'] as const;
 type DayKey = (typeof DAY_KEYS)[number];
@@ -23,10 +25,13 @@ type TrainingLine = {
   id: number;
   activity_id: number;
   title: string;
+  description: string | null;
+  difficulty_level: string;
   sort_order: number;
   weight_kg: number | null;
   weekdays_mask: number;
   day_keys: string[];
+  videos: { id: number; url: string; sort_order: number }[];
 };
 
 type TrainingContext = {
@@ -45,6 +50,15 @@ type WeekRow = {
   activity_id: number;
   title: string;
   weight_kg?: number | null;
+};
+
+type ModalExercise = {
+  routine_line_id: number;
+  title: string;
+  description: string | null;
+  difficulty_label: string;
+  weight_kg: number | null;
+  videos: { id: number; url: string }[];
 };
 
 function isRecord(v: unknown): v is Record<string, unknown> {
@@ -115,6 +129,34 @@ function parseDays(snap: Record<string, unknown>): Record<DayKey, WeekRow[]> {
   return out;
 }
 
+function modalExercisesForDay(
+  rows: WeekRow[],
+  lineByRoutineId: Map<number, TrainingLine>,
+): ModalExercise[] {
+  return rows.map((row) => {
+    const line = lineByRoutineId.get(row.routine_line_id);
+    const weight =
+      row.weight_kg !== undefined && row.weight_kg !== null
+        ? row.weight_kg
+        : (line?.weight_kg ?? null);
+    const videos = line?.videos ?? [];
+    return {
+      routine_line_id: row.routine_line_id,
+      title: (line?.title ?? row.title).trim() || row.title,
+      description: line?.description ?? null,
+      difficulty_label: activityDifficultyLabel(line?.difficulty_level),
+      weight_kg:
+        weight !== undefined && Number.isFinite(Number(weight))
+          ? Number(weight)
+          : null,
+      videos: [...videos].sort((a, b) => {
+        if (a.sort_order !== b.sort_order) return a.sort_order - b.sort_order;
+        return a.id - b.id;
+      }),
+    };
+  });
+}
+
 export function MemberWeeklyRoutinePage() {
   const { user, loading } = useAuth();
   const navigate = useNavigate();
@@ -126,6 +168,7 @@ export function MemberWeeklyRoutinePage() {
     null,
   );
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [selectedDay, setSelectedDay] = useState<DayKey | null>(null);
 
   const preview = isPortalPreviewRole(user?.role_name);
   const pickedId =
@@ -186,6 +229,29 @@ export function MemberWeeklyRoutinePage() {
     void loadAll();
   }, [loadAll]);
 
+  useEffect(() => {
+    if (selectedDay === null) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setSelectedDay(null);
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [selectedDay]);
+
+  const lineByRoutineId = useMemo(() => {
+    const m = new Map<number, TrainingLine>();
+    const lines = ctx?.assignment?.lines;
+    if (!lines) return m;
+    for (const line of lines) {
+      m.set(line.id, line);
+    }
+    return m;
+  }, [ctx?.assignment?.lines]);
+
+  useEffect(() => {
+    setSelectedDay(null);
+  }, [needsPick, pickedId, weekStart, ctx?.assignment?.id]);
+
   const hasAssignment = Boolean(ctx?.assignment);
 
   if (loading || !user) {
@@ -234,28 +300,134 @@ export function MemberWeeklyRoutinePage() {
             Vista solo lectura. La rutina la define y actualiza el personal del club desde
             gestión.
           </p>
+          <p className="muted small mp-routine-day-hint">
+            Pulsá un día con ejercicios para ver la descripción y los vídeos incrustados de cada uno.
+          </p>
           <div className="mp-routine-week">
-            {DAY_KEYS.map((day) => (
-              <div key={day} className="mp-routine-day">
-                <h3 className="mp-routine-day-title">{DAY_LABELS[day]}</h3>
-                <ul className="mp-routine-list">
-                  {(daysState?.[day] ?? []).map((row, idx) => (
-                    <li key={`${day}-${row.routine_line_id}-${idx}`} className="mp-routine-line">
-                      <span className="mp-routine-line-title">{row.title}</span>
-                      {row.weight_kg != null && Number.isFinite(row.weight_kg) ? (
-                        <span className="muted mp-routine-weight">
-                          {row.weight_kg} kg
-                        </span>
-                      ) : null}
-                    </li>
-                  ))}
-                </ul>
-                {(daysState?.[day] ?? []).length === 0 ? (
-                  <p className="muted mp-routine-empty">Sin ejercicios este día.</p>
-                ) : null}
-              </div>
-            ))}
+            {DAY_KEYS.map((day) => {
+              const dayRows = daysState?.[day] ?? [];
+              const hasRows = dayRows.length > 0;
+              return (
+                <div
+                  key={day}
+                  className={
+                    hasRows
+                      ? 'mp-routine-day mp-routine-day--clickable'
+                      : 'mp-routine-day'
+                  }
+                  role={hasRows ? 'button' : undefined}
+                  tabIndex={hasRows ? 0 : undefined}
+                  aria-label={
+                    hasRows
+                      ? `${DAY_LABELS[day]}: abrir detalle con ${dayRows.length} ejercicio(s)`
+                      : undefined
+                  }
+                  onClick={() => {
+                    if (hasRows) setSelectedDay(day);
+                  }}
+                  onKeyDown={(e) => {
+                    if (!hasRows) return;
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      setSelectedDay(day);
+                    }
+                  }}
+                >
+                  <h3 className="mp-routine-day-title">{DAY_LABELS[day]}</h3>
+                  <ul className="mp-routine-list">
+                    {dayRows.map((row, idx) => (
+                      <li
+                        key={`${day}-${row.routine_line_id}-${idx}`}
+                        className="mp-routine-line"
+                      >
+                        <span className="mp-routine-line-title">{row.title}</span>
+                        {row.weight_kg != null && Number.isFinite(row.weight_kg) ? (
+                          <span className="muted mp-routine-weight">{row.weight_kg} kg</span>
+                        ) : null}
+                      </li>
+                    ))}
+                  </ul>
+                  {!hasRows ? (
+                    <p className="muted mp-routine-empty">Sin ejercicios este día.</p>
+                  ) : null}
+                </div>
+              );
+            })}
           </div>
+          {selectedDay !== null && (daysState?.[selectedDay] ?? []).length > 0 ? (
+            <div
+              className="mp-routine-day-modal-overlay"
+              role="presentation"
+              onMouseDown={(e) => {
+                if (e.target === e.currentTarget) setSelectedDay(null);
+              }}
+            >
+              <div
+                className="mp-routine-day-modal-panel"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="mp-routine-day-modal-title"
+              >
+                <header className="mp-routine-day-modal-head">
+                  <h2 id="mp-routine-day-modal-title" className="mp-routine-day-modal-title">
+                    {DAY_LABELS[selectedDay]}
+                  </h2>
+                  <button
+                    type="button"
+                    className="mp-routine-day-modal-close"
+                    aria-label="Cerrar"
+                    onClick={() => setSelectedDay(null)}
+                  >
+                    ×
+                  </button>
+                </header>
+                <div className="mp-routine-day-modal-scroll">
+                  <p className="muted small mp-routine-day-modal-sub">
+                    Deslizá horizontalmente para ver cada ejercicio.
+                  </p>
+                  <div className="mp-routine-exercise-strip">
+                    {modalExercisesForDay(
+                      daysState?.[selectedDay] ?? [],
+                      lineByRoutineId,
+                    ).map((ex) => (
+                      <article
+                        key={ex.routine_line_id}
+                        className="mp-routine-exercise-card"
+                      >
+                        <h3 className="mp-routine-exercise-card-title">{ex.title}</h3>
+                        <p className="muted mp-routine-exercise-card-meta">
+                          Dificultad: <strong>{ex.difficulty_label}</strong>
+                          {ex.weight_kg != null && Number.isFinite(ex.weight_kg) ? (
+                            <>
+                              {' · '}
+                              Peso: <strong>{ex.weight_kg} kg</strong>
+                            </>
+                          ) : null}
+                        </p>
+                        <p className="mp-routine-exercise-card-desc">
+                          {ex.description?.trim() ? ex.description : 'Sin descripción.'}
+                        </p>
+                        {ex.videos.length === 0 ? (
+                          <p className="muted small">Sin vídeos enlazados.</p>
+                        ) : (
+                          <div className="mp-routine-exercise-videos">
+                            {ex.videos.map((v) => (
+                              <div key={v.id} className="mp-routine-exercise-video-item">
+                                <ActivityYoutubeEmbed
+                                  url={v.url}
+                                  iframeTitle={`${ex.title} — vídeo`}
+                                />
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </article>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : null}
         </>
       )}
     </section>

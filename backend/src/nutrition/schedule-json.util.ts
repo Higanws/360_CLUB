@@ -1,9 +1,19 @@
 import type { ValueTransformer } from 'typeorm';
 
+export type NutritionIngredientLine = {
+  name: string;
+  quantity: string;
+};
+
 export type NutritionScheduleSlot = {
   weekday: number;
   hour: number;
+  /** Nombre corto de la franja (p. ej. «Desayuno»). */
   event: string;
+  /** Qué platillo es (descripción). Opcional. */
+  dish?: string | null;
+  /** Ingredientes y cantidades para prepararlo. Opcional. */
+  ingredients?: NutritionIngredientLine[] | null;
 };
 
 /** Parsea el JSON guardado en LONGTEXT o devuelto ya parseado por el driver. */
@@ -33,6 +43,31 @@ function parseString(text: string): NutritionScheduleSlot[] {
   }
 }
 
+function normalizeIngredientLine(
+  o: Record<string, unknown>,
+): NutritionIngredientLine | null {
+  const name = String(o.name ?? o.ingredient ?? o.item ?? '').trim();
+  const quantity = String(o.quantity ?? o.qty ?? o.amount ?? '').trim();
+  if (!name) return null;
+  return {
+    name: name.slice(0, 200),
+    quantity: quantity.slice(0, 200),
+  };
+}
+
+function normalizeIngredients(raw: unknown): NutritionIngredientLine[] | null {
+  if (raw == null) return null;
+  if (!Array.isArray(raw)) return null;
+  const out: NutritionIngredientLine[] = [];
+  for (const x of raw) {
+    if (!x || typeof x !== 'object') continue;
+    const line = normalizeIngredientLine(x as Record<string, unknown>);
+    if (line) out.push(line);
+    if (out.length >= 100) break;
+  }
+  return out.length ? out : null;
+}
+
 function normalizeSlotsArray(arr: unknown[]): NutritionScheduleSlot[] {
   const out: NutritionScheduleSlot[] = [];
   for (const x of arr) {
@@ -44,7 +79,16 @@ function normalizeSlotsArray(arr: unknown[]): NutritionScheduleSlot[] {
     if (!Number.isInteger(wd) || wd < 0 || wd > 6) continue;
     if (!Number.isInteger(hour) || hour < 5 || hour > 23) continue;
     if (!event) continue;
-    out.push({ weekday: wd, hour, event: event.slice(0, 8000) });
+    const dishRaw = o.dish != null ? String(o.dish).trim() : '';
+    const dish = dishRaw ? dishRaw.slice(0, 4000) : null;
+    const ingredients = normalizeIngredients(o.ingredients);
+    out.push({
+      weekday: wd,
+      hour,
+      event: event.slice(0, 8000),
+      dish,
+      ingredients,
+    });
   }
   return dedupeNutritionSlots(out);
 }
