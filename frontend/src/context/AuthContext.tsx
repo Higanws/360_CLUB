@@ -8,38 +8,10 @@ import {
   type ReactNode,
 } from 'react';
 import { api, SESSION_EXPIRED_EVENT, setAuthHeader } from '../lib/api';
+import { isBusinessUser } from '../lib/role-access';
 
 const STORAGE_ACCESS = 'club360_access';
 const STORAGE_REFRESH = 'club360_refresh';
-
-/** Tokens en localStorage para compartir sesión entre pestañas (p. ej. portal desde gestión). */
-function migrateTokensFromSessionToLocal(): void {
-  const a = sessionStorage.getItem(STORAGE_ACCESS);
-  const r = sessionStorage.getItem(STORAGE_REFRESH);
-  if (a) localStorage.setItem(STORAGE_ACCESS, a);
-  if (r) localStorage.setItem(STORAGE_REFRESH, r);
-  if (a || r) {
-    sessionStorage.removeItem(STORAGE_ACCESS);
-    sessionStorage.removeItem(STORAGE_REFRESH);
-  }
-}
-
-function readToken(key: string): string | null {
-  migrateTokensFromSessionToLocal();
-  return localStorage.getItem(key);
-}
-
-function writeToken(key: string, value: string): void {
-  localStorage.setItem(key, value);
-  sessionStorage.removeItem(key);
-}
-
-function clearStoredTokens(): void {
-  localStorage.removeItem(STORAGE_ACCESS);
-  localStorage.removeItem(STORAGE_REFRESH);
-  sessionStorage.removeItem(STORAGE_ACCESS);
-  sessionStorage.removeItem(STORAGE_REFRESH);
-}
 
 export type UserProfile = {
   id: number;
@@ -49,6 +21,61 @@ export type UserProfile = {
   last_name: string | null;
   email: string | null;
 };
+
+/** Sesión socio: por pestaña. Admin/staff: localStorage compartido entre pestañas. */
+function readRawTokens(): { access: string | null; refresh: string | null } {
+  const sa = sessionStorage.getItem(STORAGE_ACCESS);
+  const sr = sessionStorage.getItem(STORAGE_REFRESH);
+  if (sa || sr) {
+    return { access: sa, refresh: sr };
+  }
+  const la = localStorage.getItem(STORAGE_ACCESS);
+  const lr = localStorage.getItem(STORAGE_REFRESH);
+  return { access: la, refresh: lr };
+}
+
+function persistTokens(
+  access: string,
+  refresh: string,
+  roleName: string | null | undefined,
+): void {
+  if (isBusinessUser(roleName)) {
+    sessionStorage.removeItem(STORAGE_ACCESS);
+    sessionStorage.removeItem(STORAGE_REFRESH);
+    localStorage.setItem(STORAGE_ACCESS, access);
+    localStorage.setItem(STORAGE_REFRESH, refresh);
+  } else {
+    localStorage.removeItem(STORAGE_ACCESS);
+    localStorage.removeItem(STORAGE_REFRESH);
+    sessionStorage.setItem(STORAGE_ACCESS, access);
+    sessionStorage.setItem(STORAGE_REFRESH, refresh);
+  }
+}
+
+/** Tras login o /me: dejar tokens en el almacén que corresponde al rol (migra legado en local). */
+function alignTokensWithRole(
+  user: UserProfile,
+  access: string,
+  refresh: string,
+): void {
+  if (!refresh) return;
+  persistTokens(access, refresh, user.role_name);
+}
+
+function clearStoredTokens(): void {
+  localStorage.removeItem(STORAGE_ACCESS);
+  localStorage.removeItem(STORAGE_REFRESH);
+  sessionStorage.removeItem(STORAGE_ACCESS);
+  sessionStorage.removeItem(STORAGE_REFRESH);
+}
+
+/** Esta pestaña tiene sesión de portal (socio); no aplicar cambios de localStorage desde otras pestañas. */
+function tabHasMemberSession(): boolean {
+  return Boolean(
+    sessionStorage.getItem(STORAGE_ACCESS) ||
+      sessionStorage.getItem(STORAGE_REFRESH),
+  );
+}
 
 type AuthState = {
   accessToken: string | null;
@@ -65,12 +92,14 @@ type AuthContextValue = AuthState & {
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [accessToken, setAccessToken] = useState<string | null>(() =>
-    readToken(STORAGE_ACCESS),
-  );
-  const [refreshToken, setRefreshToken] = useState<string | null>(() =>
-    readToken(STORAGE_REFRESH),
-  );
+  const [accessToken, setAccessToken] = useState<string | null>(() => {
+    const { access } = readRawTokens();
+    return access;
+  });
+  const [refreshToken, setRefreshToken] = useState<string | null>(() => {
+    const { refresh } = readRawTokens();
+    return refresh;
+  });
   const [user, setUser] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -83,8 +112,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const bootstrap = useCallback(async () => {
-    const access = readToken(STORAGE_ACCESS);
-    const refresh = readToken(STORAGE_REFRESH);
+    const { access, refresh } = readRawTokens();
     if (!access && !refresh) {
       setLoading(false);
       return;
@@ -95,10 +123,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         accessToken: string;
         refreshToken: string;
       }>('/auth/refresh', { refreshToken: rt });
-      writeToken(STORAGE_ACCESS, data.accessToken);
-      writeToken(STORAGE_REFRESH, data.refreshToken);
       setAuthHeader(data.accessToken);
       const me = await api.get<UserProfile>('/auth/me');
+      alignTokensWithRole(me.data, data.accessToken, data.refreshToken);
       setUser(me.data);
       setAccessToken(data.accessToken);
       setRefreshToken(data.refreshToken);
@@ -109,6 +136,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setAuthHeader(access);
         try {
           const { data } = await api.get<UserProfile>('/auth/me');
+          if (refresh) alignTokensWithRole(data, access, refresh);
           setUser(data);
           setAccessToken(access);
           setRefreshToken(refresh);
@@ -126,6 +154,59 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [logout]);
 
+  /** Sincronizar admin/staff cuando otra pestaña escribe o renueva tokens en localStorage. */
+  const syncFromOtherTabLocalStorage = useCallback(async () => {
+    if (tabHasMemberSession()) return;
+
+    const access = localStorage.getItem(STORAGE_ACCESS);
+    const refresh = localStorage.getItem(STORAGE_REFRESH);
+    if (!access && !refresh) {
+      setAuthHeader(null);
+      setAccessToken(null);
+      setRefreshToken(null);
+      setUser(null);
+      return;
+    }
+
+    const applyRefresh = async (rt: string) => {
+      const { data } = await api.post<{
+        accessToken: string;
+        refreshToken: string;
+      }>('/auth/refresh', { refreshToken: rt });
+      setAuthHeader(data.accessToken);
+      const me = await api.get<UserProfile>('/auth/me');
+      if (!isBusinessUser(me.data.role_name)) {
+        return;
+      }
+      alignTokensWithRole(me.data, data.accessToken, data.refreshToken);
+      setUser(me.data);
+      setAccessToken(data.accessToken);
+      setRefreshToken(data.refreshToken);
+    };
+
+    try {
+      if (access) {
+        setAuthHeader(access);
+        try {
+          const { data } = await api.get<UserProfile>('/auth/me');
+          if (!isBusinessUser(data.role_name)) {
+            return;
+          }
+          if (refresh) alignTokensWithRole(data, access, refresh);
+          setUser(data);
+          setAccessToken(access);
+          setRefreshToken(refresh);
+        } catch {
+          if (refresh) await applyRefresh(refresh);
+        }
+      } else if (refresh) {
+        await applyRefresh(refresh);
+      }
+    } catch {
+      /* otro tab pudo escribir tokens inválidos; no cerrar sesión de socio en otra ruta */
+    }
+  }, []);
+
   useEffect(() => {
     void bootstrap();
   }, [bootstrap]);
@@ -136,24 +217,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener(SESSION_EXPIRED_EVENT, onExpired);
   }, [logout]);
 
-  /** Si otra pestaña borra los tokens (cerrar sesión), esta pestaña deja de estar autenticada. */
   useEffect(() => {
+    let t: ReturnType<typeof setTimeout> | undefined;
+    const schedule = () => {
+      clearTimeout(t);
+      t = setTimeout(() => void syncFromOtherTabLocalStorage(), 40);
+    };
+
     const onStorage = (e: StorageEvent) => {
       if (e.storageArea !== localStorage) return;
       if (e.key !== STORAGE_ACCESS && e.key !== STORAGE_REFRESH) return;
-      if (
-        !localStorage.getItem(STORAGE_ACCESS) &&
-        !localStorage.getItem(STORAGE_REFRESH)
-      ) {
-        setAuthHeader(null);
-        setAccessToken(null);
-        setRefreshToken(null);
-        setUser(null);
-      }
+      schedule();
     };
     window.addEventListener('storage', onStorage);
-    return () => window.removeEventListener('storage', onStorage);
-  }, []);
+    return () => {
+      clearTimeout(t);
+      window.removeEventListener('storage', onStorage);
+    };
+  }, [syncFromOtherTabLocalStorage]);
 
   const login = useCallback(async (username: string, password: string) => {
     const { data } = await api.post<{
@@ -162,8 +243,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       user: UserProfile;
     }>('/auth/login', { username, password });
 
-    writeToken(STORAGE_ACCESS, data.accessToken);
-    writeToken(STORAGE_REFRESH, data.refreshToken);
+    persistTokens(data.accessToken, data.refreshToken, data.user.role_name);
     setAuthHeader(data.accessToken);
     setAccessToken(data.accessToken);
     setRefreshToken(data.refreshToken);
