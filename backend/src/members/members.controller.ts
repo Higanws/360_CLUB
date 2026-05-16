@@ -7,11 +7,13 @@ import {
   ParseIntPipe,
   Patch,
   Post,
+  Query,
   Req,
   UseGuards,
 } from '@nestjs/common';
 import { BusinessRoleGuard } from './business-role.guard';
 import { CreateMemberDto } from './dto/create-member.dto';
+import { MembersListQueryDto } from './dto/members-list-query.dto';
 import { UpdateMemberDto } from './dto/update-member.dto';
 import { MembersService } from './members.service';
 import { BusinessRoles } from './roles.decorator';
@@ -31,10 +33,17 @@ export class MembersController {
   }
 
   @Get()
-  list(@Req() req: { user: { userId: number; role_name: string } }) {
+  list(
+    @Query() query: MembersListQueryDto,
+    @Req() req: { user: { userId: number; role_name: string } },
+  ) {
+    const page = query.page ?? 1;
+    const pageSize = query.pageSize ?? 25;
     return this.members.listForUser({
       userId: req.user.userId,
       role_name: req.user.role_name,
+      page,
+      pageSize,
     });
   }
 

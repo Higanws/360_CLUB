@@ -9,6 +9,7 @@ import {
 import { routes } from '../../config/member-management';
 import { memberPortalRoutes } from '../../config/member-portal';
 import { api } from '../../lib/api';
+import { fetchAllMembersLiteRows } from '../../lib/members-api';
 import { extractApiMessage } from '../../lib/extract-api-message';
 import { useAuth } from '../../context/AuthContext';
 import './nutrition-plan-grid.css';
@@ -211,9 +212,8 @@ export function NutritionPlanPage() {
 
   useEffect(() => {
     if (!user) return;
-    api
-      .get<MembersListPayload>('/members')
-      .then(({ data }) => setMembersOptions(data.members ?? []))
+    fetchAllMembersLiteRows(200)
+      .then((rows) => setMembersOptions(rows))
       .catch(() => setMembersOptions([]));
   }, [user]);
 

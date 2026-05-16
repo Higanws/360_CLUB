@@ -51,6 +51,10 @@ export type MembersListResponse = {
     can_add_member: boolean;
     show_status_column: boolean;
     date_format: string | null;
+    page: number;
+    pageSize: number;
+    total: number;
+    pageCount: number;
   };
 };
 
@@ -259,6 +263,8 @@ export class MembersService {
   async listForUser(payload: {
     userId: number;
     role_name: string;
+    page: number;
+    pageSize: number;
   }): Promise<MembersListResponse> {
     const role = normalizeClubRole(payload.role_name);
     if (role === 'member') {
@@ -270,6 +276,11 @@ export class MembersService {
 
     const uid = payload.userId;
     const settingRow = await this.settingsRow();
+    const page = Math.max(1, Math.floor(payload.page) || 1);
+    const pageSize = Math.min(
+      500,
+      Math.max(1, Math.floor(payload.pageSize) || 25),
+    );
 
     const qb = this.members
       .createQueryBuilder('m')
@@ -293,9 +304,13 @@ export class MembersService {
       qb.andWhere('m.assign_staff_mem = :uid', { uid });
     }
 
+    const total = await qb.clone().getCount();
     const rows = await qb
+      .clone()
       .orderBy('m.first_name', 'ASC')
       .addOrderBy('m.last_name', 'ASC')
+      .skip((page - 1) * pageSize)
+      .take(pageSize)
       .getMany();
 
     const mapped: MembersListRow[] = rows.map((r) => ({
@@ -310,6 +325,8 @@ export class MembersService {
       membership_valid_to: toIsoDateOnly(r.membership_valid_to),
     }));
 
+    const pageCount = total === 0 ? 1 : Math.ceil(total / pageSize);
+
     return {
       title: 'Lista de socios',
       subtitle: 'Socios',
@@ -319,6 +336,10 @@ export class MembersService {
         can_add_member: role === 'administrator',
         show_status_column: role === 'administrator',
         date_format: settingRow?.date_format ?? null,
+        page,
+        pageSize,
+        total,
+        pageCount,
       },
     };
   }

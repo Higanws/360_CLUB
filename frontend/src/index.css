@@ -804,6 +804,37 @@ code {
   margin-bottom: 1rem;
 }
 
+.members-pagination-toolbar {
+  justify-content: space-between;
+}
+
+.members-pagination {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.members-pagination-status {
+  white-space: nowrap;
+}
+
+.members-page-size {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.members-page-size select {
+  min-width: 4.5rem;
+  font: inherit;
+  padding: 0.25rem 0.4rem;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text);
+}
+
 .members-toolbar-note {
   font-size: 0.85rem;
   max-width: 42rem;

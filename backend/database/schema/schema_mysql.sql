@@ -138,7 +138,10 @@ CREATE TABLE IF NOT EXISTS `gym_member` (
   `physical_thigh_cm` decimal(10,2) DEFAULT NULL,
   `physical_arms_cm` decimal(10,2) DEFAULT NULL,
   `physical_fat_percent` decimal(10,2) DEFAULT NULL,
-  PRIMARY KEY (`id`)
+  PRIMARY KEY (`id`),
+  KEY `idx_gym_member_assign_staff` (`assign_staff_mem`),
+  KEY `idx_gym_member_name` (`first_name`, `last_name`),
+  KEY `idx_gym_member_username` (`username`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `gym_member_class` (
@@ -339,3 +342,12 @@ CREATE TABLE IF NOT EXISTS `club_access_log` (
   CONSTRAINT `fk_cal_member` FOREIGN KEY (`member_id`) REFERENCES `gym_member` (`id`) ON DELETE SET NULL,
   CONSTRAINT `fk_cal_staff` FOREIGN KEY (`staff_actor_id`) REFERENCES `gym_member` (`id`) ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- -----------------------------------------------------------------------------
+-- Actualización manual: bases ya creadas sin los índices en gym_member
+-- (si el CREATE TABLE anterior ya los incluye, omitir o ignorar error 1061).
+-- Ver docs/escalabilidad-y-operacion.md
+-- -----------------------------------------------------------------------------
+-- ALTER TABLE `gym_member` ADD INDEX `idx_gym_member_assign_staff` (`assign_staff_mem`);
+-- ALTER TABLE `gym_member` ADD INDEX `idx_gym_member_name` (`first_name`, `last_name`);
+-- ALTER TABLE `gym_member` ADD INDEX `idx_gym_member_username` (`username`);

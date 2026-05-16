@@ -8,28 +8,10 @@ import { memberPortalRoutes } from '../config/member-portal';
 import { useGestionAuth } from '../hooks/useGestionAuth';
 import { api } from '../lib/api';
 import { apiErrorStatus } from '../lib/is-api-error';
-
-type MembersPayload = {
-  title: string;
-  subtitle: string;
-  members: Array<{
-    id: number;
-    activated: number | null;
-    member_id: string | null;
-    first_name: string | null;
-    last_name: string | null;
-    image: string | null;
-    membership_status: string | null;
-    membership_valid_from: string | null;
-    membership_valid_to: string | null;
-  }>;
-  meta: {
-    role_name: string;
-    can_add_member: boolean;
-    show_status_column: boolean;
-    date_format: string | null;
-  };
-};
+import {
+  fetchMembersListPage,
+  type MembersListApiPayload,
+} from '../lib/members-api';
 
 function formatClubDate(
   iso: string | null,
@@ -66,15 +48,19 @@ function todayIso(): string {
 export function MembersPage() {
   useGestionAuth();
   const navigate = useNavigate();
-  const [data, setData] = useState<MembersPayload | null>(null);
+  const [data, setData] = useState<MembersListApiPayload | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loadingData, setLoadingData] = useState(true);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
 
   useEffect(() => {
     setLoadingData(true);
-    api
-      .get<MembersPayload>('/members')
-      .then(({ data: d }) => setData(d))
+    fetchMembersListPage(page, pageSize)
+      .then((d) => {
+        setData(d);
+        setError(null);
+      })
       .catch((e: unknown) => {
         if (apiErrorStatus(e) === 403) {
           navigate(memberPortalRoutes.wellness, { replace: true });
@@ -83,7 +69,7 @@ export function MembersPage() {
         setError('No se pudo cargar la lista de socios.');
       })
       .finally(() => setLoadingData(false));
-  }, [navigate]);
+  }, [page, pageSize, navigate]);
 
   async function handleDelete(id: number) {
     if (!confirm('¿Eliminar este socio? Esta acción no se puede deshacer.')) {
@@ -91,7 +77,13 @@ export function MembersPage() {
     }
     try {
       await api.delete(`/members/${id}`);
-      const { data: d } = await api.get<MembersPayload>('/members');
+      let p = page;
+      let d = await fetchMembersListPage(p, pageSize);
+      if (d.members.length === 0 && d.meta.total > 0 && p > 1) {
+        p -= 1;
+        setPage(p);
+        d = await fetchMembersListPage(p, pageSize);
+      }
       setData(d);
       setError(null);
     } catch {
@@ -106,6 +98,8 @@ export function MembersPage() {
   }
 
   const df = data?.meta.date_format;
+  const meta = data?.meta;
+  const showPager = meta && meta.pageCount > 1;
 
   return (
     <div className="mm-page">
@@ -116,6 +110,12 @@ export function MembersPage() {
             <span className="members-breadcrumb">
               {data?.subtitle ?? 'Socios'}
             </span>
+            {meta && meta.total > 0 ? (
+              <>
+                {' '}
+                · <span className="muted">{meta.total} socios</span>
+              </>
+            ) : null}
           </p>
         </div>
       </header>
@@ -125,6 +125,47 @@ export function MembersPage() {
           <Link to={routes.sociosNew} className="btn-primary">
             + Añadir socio
           </Link>
+        </div>
+      ) : null}
+
+      {showPager ? (
+        <div className="members-toolbar members-pagination-toolbar">
+          <div className="members-pagination">
+            <button
+              type="button"
+              className="btn-outline"
+              disabled={page <= 1 || loadingData}
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+            >
+              Anterior
+            </button>
+            <span className="muted small members-pagination-status">
+              Página {meta.page} de {meta.pageCount}
+            </span>
+            <button
+              type="button"
+              className="btn-outline"
+              disabled={page >= meta.pageCount || loadingData}
+              onClick={() => setPage((p) => p + 1)}
+            >
+              Siguiente
+            </button>
+          </div>
+          <label className="members-page-size">
+            <span className="muted small">Por página</span>
+            <select
+              value={pageSize}
+              disabled={loadingData}
+              onChange={(e) => {
+                setPageSize(Number(e.target.value));
+                setPage(1);
+              }}
+            >
+              <option value={25}>25</option>
+              <option value={50}>50</option>
+              <option value={100}>100</option>
+            </select>
+          </label>
         </div>
       ) : null}
 
@@ -166,8 +207,8 @@ export function MembersPage() {
                     </td>
                     <td>{name || '—'}</td>
                     <td>{row.member_id ?? '—'}</td>
-                    <td>{formatClubDate(row.membership_valid_from, df)}</td>
-                    <td>{formatClubDate(row.membership_valid_to, df)}</td>
+                    <td>{formatClubDate(row.membership_valid_from ?? null, df)}</td>
+                    <td>{formatClubDate(row.membership_valid_to ?? null, df)}</td>
                     <td>{row.membership_status ?? '—'}</td>
                     <MmTableActions label={`Acciones de ${name || row.member_id || 'socio'}`}>
                       <Link

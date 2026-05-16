@@ -2,6 +2,7 @@ import { type FormEvent, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { routes } from '../../config/member-management';
 import { api } from '../../lib/api';
+import { fetchAllMembersLiteRows } from '../../lib/members-api';
 import { extractApiMessage } from '../../lib/extract-api-message';
 import { useAuth } from '../../context/AuthContext';
 
@@ -63,12 +64,12 @@ export function TrainingAssignmentFormPage() {
     if (!user) return;
     Promise.all([
       api.get<RoutineRow[]>('/training-routines'),
-      api.get<MembersPayload>('/members'),
+      fetchAllMembersLiteRows(200),
       api.get<StaffPayload>('/staff'),
     ])
-      .then(([rRes, mRes, sRes]) => {
+      .then(([rRes, memberRows, sRes]) => {
         setRoutines(rRes.data);
-        setMembers(mRes.data.members ?? []);
+        setMembers(memberRows);
         setStaff(sRes.data.staff ?? []);
         setError(null);
       })

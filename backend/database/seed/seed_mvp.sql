@@ -1,6 +1,9 @@
 -- Club360 MVP — datos de prueba (única fuente de INSERTs demo).
 -- Ejecutar tras el DDL en database/schema/schema_mysql.sql (wizard, npm run db:seed).
 --
+-- Índices de listado / login en `gym_member`: definidos en schema_mysql.sql (CREATE TABLE).
+-- Bases antiguas: ALTER comentados al final de schema_mysql.sql o en docs/escalabilidad-y-operacion.md
+--
 -- Contraseñas (bcrypt):
 --   admin     → admin      (el wizard sobrescribe id=1 con la del asistente)
 --   staff     → staff

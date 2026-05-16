@@ -1,0 +1,64 @@
+import { api } from './api';
+
+/** Respuesta `GET /members` (paginada). */
+export type MembersListApiPayload = {
+  title: string;
+  subtitle: string;
+  members: Array<{
+    id: number;
+    activated?: number | null;
+    member_id?: string | null;
+    first_name: string | null;
+    last_name: string | null;
+    image?: string | null;
+    membership_status?: string | null;
+    membership_valid_from?: string | null;
+    membership_valid_to?: string | null;
+  }>;
+  meta: {
+    role_name: string;
+    can_add_member: boolean;
+    show_status_column: boolean;
+    date_format: string | null;
+    page: number;
+    pageSize: number;
+    total: number;
+    pageCount: number;
+  };
+};
+
+export async function fetchMembersListPage(
+  page: number,
+  pageSize: number,
+): Promise<MembersListApiPayload> {
+  const { data } = await api.get<MembersListApiPayload>('/members', {
+    params: { page, pageSize },
+  });
+  return data;
+}
+
+const MAX_PAGE_SIZE = 500;
+
+/**
+ * Carga todas las páginas de socios (solo id + nombre) para desplegables / búsqueda en gestión.
+ * Usa `pageSize` alto para minimizar viajes; máximo API 500 por página.
+ */
+export async function fetchAllMembersLiteRows(
+  pageSize = 200,
+): Promise<
+  Array<{ id: number; first_name: string | null; last_name: string | null }>
+> {
+  const ps = Math.min(MAX_PAGE_SIZE, Math.max(1, pageSize));
+  const first = await fetchMembersListPage(1, ps);
+  const rows = [...first.members];
+  const pageCount = first.meta.pageCount ?? 1;
+  for (let p = 2; p <= pageCount; p += 1) {
+    const d = await fetchMembersListPage(p, ps);
+    rows.push(...d.members);
+  }
+  return rows.map((m) => ({
+    id: m.id,
+    first_name: m.first_name,
+    last_name: m.last_name,
+  }));
+}

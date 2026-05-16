@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { api } from '../../lib/api';
+import { fetchAllMembersLiteRows } from '../../lib/members-api';
 import { isPortalPreviewRole } from '../../lib/member-wellness-params';
 import { useAuth } from '../../context/AuthContext';
 
@@ -40,10 +40,9 @@ export function MemberSocioPreviewBar() {
 
   useEffect(() => {
     if (!show || !user) return;
-    api
-      .get<MembersPayload>('/members')
-      .then(({ data }) => {
-        setMembers(data.members ?? []);
+    fetchAllMembersLiteRows(200)
+      .then((rows) => {
+        setMembers(rows);
         setLoadErr(null);
       })
       .catch(() => setLoadErr('No se pudo cargar el listado de socios.'));
