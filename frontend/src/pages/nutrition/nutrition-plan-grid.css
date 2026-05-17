@@ -176,3 +176,28 @@
   margin-top: 0.5rem;
   font-size: 0.85rem;
 }
+
+/* Lista de comidas (mismo ritmo que .routine-exercise-list en rutinas) */
+.nutrition-meal-list {
+  margin-top: 1rem;
+}
+
+.nutrition-meal-item {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.65rem;
+}
+
+.nutrition-meal-field {
+  display: block;
+  width: 100%;
+}
+
+.nutrition-meal-field .nutrition-plan-detail-input,
+.nutrition-meal-field .nutrition-plan-detail-textarea {
+  margin-top: 0.25rem;
+}
+
+.nutrition-meal-ingredients {
+  width: 100%;
+}
