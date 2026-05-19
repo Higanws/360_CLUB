@@ -3,6 +3,8 @@ import type { FormEvent } from 'react';
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
 import { api } from '../lib/api';
 import { extractApiMessage } from '../lib/extract-api-message';
+import { MmDatePicker } from '../components/ui/MmDatePicker';
+import { MmSelect } from '../components/ui/MmSelect';
 import { routes } from '../config/member-management';
 import { normalizeStoredGender } from '../lib/gender-options';
 import { useAuth } from '../context/AuthContext';
@@ -208,39 +210,38 @@ export function StaffFormPage({ mode }: { mode: Mode }) {
             </label>
             <label>
               Género
-              <select
+              <MmSelect
                 value={gender}
-                onChange={(e) => setGender(e.target.value)}
+                onValueChange={setGender}
                 required
-              >
-                <option value="male">Masculino</option>
-                <option value="female">Femenino</option>
-                <option value="other">Otro</option>
-              </select>
+                options={[
+                  { value: 'male', label: 'Masculino' },
+                  { value: 'female', label: 'Femenino' },
+                  { value: 'other', label: 'Otro' },
+                ]}
+              />
             </label>
             <label>
               Fecha de nacimiento
-              <input
-                type="date"
+              <MmDatePicker
                 value={birth_date}
-                onChange={(e) => setBirth(e.target.value)}
+                onChange={setBirth}
                 required
+                aria-label="Fecha de nacimiento"
               />
             </label>
             <label>
               Rol en el club
-              <select
+              <MmSelect
                 value={role}
-                onChange={(e) => setRole(e.target.value)}
+                onValueChange={setRole}
                 required
-              >
-                <option value="">— Seleccionar —</option>
-                {(options?.club_roles ?? []).map((r) => (
-                  <option key={r.id} value={String(r.id)}>
-                    {r.name ?? `Rol ${r.id}`}
-                  </option>
-                ))}
-              </select>
+                options={(options?.club_roles ?? []).map((r) => ({
+                  value: String(r.id),
+                  label: r.name ?? `Rol ${r.id}`,
+                }))}
+                placeholder="— Seleccionar —"
+              />
             </label>
           </div>
         </section>

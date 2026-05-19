@@ -1,5 +1,6 @@
 import { type FormEvent, useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
+import { MmSelect } from '../../components/ui/MmSelect';
 import { routes } from '../../config/member-management';
 import { memberPortalRoutes } from '../../config/member-portal';
 import { api } from '../../lib/api';
@@ -237,18 +238,16 @@ export function ActivityFormPage({ mode }: { mode: Mode }) {
               <span className="pay-manual-label">
                 Selecciona una categoría <span className="pay-req">*</span>
               </span>
-              <select
+              <MmSelect
                 required
                 value={categoryId}
-                onChange={(e) => setCategoryId(e.target.value)}
-              >
-                <option value="">— selecciona —</option>
-                {categories.map((c) => (
-                  <option key={c.id} value={String(c.id)}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
+                onValueChange={setCategoryId}
+                options={categories.map((c) => ({
+                  value: String(c.id),
+                  label: c.name,
+                }))}
+                placeholder="— selecciona —"
+              />
             </label>
             <button
               type="button"
@@ -293,19 +292,17 @@ export function ActivityFormPage({ mode }: { mode: Mode }) {
             <span className="pay-manual-label">
               Nivel (dificultad) <span className="pay-req">*</span>
             </span>
-            <select
+            <MmSelect
               required
               value={difficultyLevel}
-              onChange={(e) =>
-                setDifficultyLevel(e.target.value as ActivityDifficultyLevel)
+              onValueChange={(v) =>
+                setDifficultyLevel(v as ActivityDifficultyLevel)
               }
-            >
-              {ACTIVITY_DIFFICULTY_LEVELS.map((v) => (
-                <option key={v} value={v}>
-                  {activityDifficultyLabel(v)}
-                </option>
-              ))}
-            </select>
+              options={ACTIVITY_DIFFICULTY_LEVELS.map((v) => ({
+                value: v,
+                label: activityDifficultyLabel(v),
+              }))}
+            />
           </label>
 
           <label className="pay-manual-row">
@@ -323,17 +320,15 @@ export function ActivityFormPage({ mode }: { mode: Mode }) {
               <span className="pay-manual-label">
                 Asignar a miembro del personal <span className="pay-req">*</span>
               </span>
-              <select
+              <MmSelect
                 value={pickStaffId}
-                onChange={(e) => setPickStaffId(e.target.value)}
-              >
-                <option value="">— Seleccione miembro del personal —</option>
-                {staffList.map((s) => (
-                  <option key={s.id} value={String(s.id)}>
-                    {staffLabel(s)}
-                  </option>
-                ))}
-              </select>
+                onValueChange={setPickStaffId}
+                options={staffList.map((s) => ({
+                  value: String(s.id),
+                  label: staffLabel(s),
+                }))}
+                placeholder="— Seleccione miembro del personal —"
+              />
             </label>
             <button type="button" className="btn-outline" onClick={addTrainer}>
               Agregar miembro del personal

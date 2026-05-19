@@ -1,6 +1,7 @@
 /* Paleta: grises, negros y rojos — modo claro / oscuro (data-theme) */
 @import './styles/mm-data-table.css';
 @import './styles/mm-forms.css';
+@import './styles/mm-ui.css';
 
 :root[data-theme='light'] {
   color-scheme: light;
@@ -449,7 +450,11 @@ code {
 
 .mp-portal-preview-search {
   position: relative;
-  max-width: 22rem;
+  max-width: min(100%, 22rem);
+}
+
+.mp-portal-preview-search .mm-combobox-anchor {
+  max-width: 100%;
 }
 
 .mp-portal-preview-field {
@@ -2562,12 +2567,10 @@ code {
   gap: 0.5rem;
 }
 
-.pay-manual-date-range input[type='date'] {
-  padding: 0.5rem 0.55rem;
-  border-radius: 6px;
-  border: 1px solid var(--border);
-  background: var(--bg-page);
-  color: var(--text);
+.pay-manual-date-range .mm-date-picker-trigger {
+  flex: 1 1 9.5rem;
+  min-width: 9rem;
+  max-width: 11.5rem;
 }
 
 .pay-manual-a {

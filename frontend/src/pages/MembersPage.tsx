@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { MmSelect } from '../components/ui/MmSelect';
 import { MemberAvatar } from '../components/mm/MemberAvatar';
 import { MmTableActions } from '../components/mm/MmTableActions';
 import { PageLoading } from '../components/mm/PageLoading';
@@ -153,18 +154,19 @@ export function MembersPage() {
           </div>
           <label className="members-page-size">
             <span className="muted small">Por página</span>
-            <select
-              value={pageSize}
+            <MmSelect
+              value={String(pageSize)}
               disabled={loadingData}
-              onChange={(e) => {
-                setPageSize(Number(e.target.value));
+              onValueChange={(v) => {
+                setPageSize(Number(v));
                 setPage(1);
               }}
-            >
-              <option value={25}>25</option>
-              <option value={50}>50</option>
-              <option value={100}>100</option>
-            </select>
+              options={[
+                { value: '25', label: '25' },
+                { value: '50', label: '50' },
+                { value: '100', label: '100' },
+              ]}
+            />
           </label>
         </div>
       ) : null}

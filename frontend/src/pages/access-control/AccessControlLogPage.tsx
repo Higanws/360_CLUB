@@ -1,5 +1,7 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { bindDateRange } from '../../lib/date-range';
 import { Link, useNavigate } from 'react-router-dom';
+import { MmDatePicker } from '../../components/ui/MmDatePicker';
 import { routes } from '../../config/member-management';
 import { api } from '../../lib/api';
 import { useAuth } from '../../context/AuthContext';
@@ -19,6 +21,11 @@ export function AccessControlLogPage() {
   const [rows, setRows] = useState<AccessLogRow[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  const filterRange = useMemo(
+    () => bindDateRange(from, to, setFrom, setTo),
+    [from, to],
+  );
 
   const load = useCallback(() => {
     setBusy(true);
@@ -89,22 +96,22 @@ export function AccessControlLogPage() {
           >
             <label>
               <span className="muted">Desde</span>
-              <input
-                type="date"
-                className="member-picker-input"
-                value={from}
-                onChange={(ev) => setFrom(ev.target.value)}
+              <MmDatePicker
+                value={filterRange.desde}
+                onChange={filterRange.onDesdeChange}
+                max={filterRange.maxDesde}
                 disabled={busy}
+                aria-label="Filtro desde"
               />
             </label>
             <label>
               <span className="muted">Hasta</span>
-              <input
-                type="date"
-                className="member-picker-input"
-                value={to}
-                onChange={(ev) => setTo(ev.target.value)}
+              <MmDatePicker
+                value={filterRange.hasta}
+                onChange={filterRange.onHastaChange}
+                min={filterRange.minHasta}
                 disabled={busy}
+                aria-label="Filtro hasta"
               />
             </label>
             <button type="submit" className="btn-primary" disabled={busy}>

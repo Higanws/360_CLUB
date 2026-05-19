@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { MmCombobox } from '../../components/ui/MmCombobox';
 import { fetchAllMembersLiteRows } from '../../lib/members-api';
 import { isPortalPreviewRole } from '../../lib/member-wellness-params';
 import { useAuth } from '../../context/AuthContext';
@@ -54,7 +55,7 @@ export function MemberSocioPreviewBar() {
     return m;
   }, [members]);
 
-  const suggestions = useMemo(() => {
+  const comboboxOptions = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return [];
     return members
@@ -65,7 +66,11 @@ export function MemberSocioPreviewBar() {
           .toLowerCase();
         return blob.includes(q);
       })
-      .slice(0, 12);
+      .slice(0, 12)
+      .map((m) => ({
+        value: String(m.id),
+        label: personLabel(m, m.id),
+      }));
   }, [members, search]);
 
   if (!show) return null;
@@ -104,28 +109,15 @@ export function MemberSocioPreviewBar() {
       </div>
       {loadErr ? <p className="login-error mp-portal-preview-err">{loadErr}</p> : null}
       <div className="mp-portal-preview-search">
-        <label className="mp-portal-preview-field">
-          <input
-            type="search"
-            className="mp-portal-preview-input"
-            placeholder="Buscar socio (nombre, apellidos o ID)…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            autoComplete="off"
-            aria-label="Buscar socio"
-          />
-        </label>
-        {suggestions.length > 0 ? (
-          <ul className="mp-portal-preview-suggest" role="listbox">
-            {suggestions.map((m) => (
-              <li key={m.id}>
-                <button type="button" className="mp-portal-preview-suggest-btn" onClick={() => pickMember(m.id)}>
-                  {personLabel(m, m.id)}
-                </button>
-              </li>
-            ))}
-          </ul>
-        ) : null}
+        <MmCombobox
+          query={search}
+          onQueryChange={setSearch}
+          options={comboboxOptions}
+          onSelect={(v) => pickMember(parseInt(v, 10))}
+          placeholder="Buscar socio (nombre, apellidos o ID)…"
+          emptyMessage="Ningún socio coincide."
+          aria-label="Buscar socio"
+        />
       </div>
       {role === 'staff_member' ? (
         <p className="muted mp-portal-preview-foot">

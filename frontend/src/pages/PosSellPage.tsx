@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { MmSearchField } from '../components/ui/MmSearchField';
+import { MmSelect } from '../components/ui/MmSelect';
 import { memberPortalRoutes } from '../config/member-portal';
 import { api } from '../lib/api';
 import { extractApiMessage } from '../lib/extract-api-message';
@@ -148,15 +150,12 @@ export function PosSellPage() {
         <section className="pos-panel pos-panel--catalog">
           <div className="pay-toolbar">
             <span className="muted">Catálogo</span>
-            <label className="pay-search">
-              <span>Buscar:</span>
-              <input
-                type="search"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Nombre o SKU"
-              />
-            </label>
+            <MmSearchField
+              label="Buscar:"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Nombre o SKU"
+            />
           </div>
           <div className="pos-catalog-grid">
             {filtered.map((p) => (
@@ -223,17 +222,14 @@ export function PosSellPage() {
           </div>
           <label className="pos-payment-field">
             <span className="muted">Método de pago</span>
-            <select
-              className="mm-select"
+            <MmSelect
               value={paymentMethod}
-              onChange={(e) => setPaymentMethod(e.target.value)}
-            >
-              {POS_PAYMENT_OPTIONS.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
+              onValueChange={setPaymentMethod}
+              options={POS_PAYMENT_OPTIONS.map((o) => ({
+                value: o.value,
+                label: o.label,
+              }))}
+            />
           </label>
           <button
             type="button"

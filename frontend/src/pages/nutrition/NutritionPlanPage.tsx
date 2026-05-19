@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { bindDateRange, normalizeDateRange } from '../../lib/date-range';
 import type { FormEvent } from 'react';
 import {
   Link,
@@ -6,6 +7,8 @@ import {
   useParams,
   useSearchParams,
 } from 'react-router-dom';
+import { MmDatePicker } from '../../components/ui/MmDatePicker';
+import { MmSelect } from '../../components/ui/MmSelect';
 import { routes } from '../../config/member-management';
 import { memberPortalRoutes } from '../../config/member-portal';
 import { api } from '../../lib/api';
@@ -71,6 +74,30 @@ export function NutritionPlanPage() {
     [mealLines],
   );
 
+  const memberSelectOptions = useMemo(
+    () =>
+      membersOptions.map((m) => ({
+        value: String(m.id),
+        label:
+          [m.first_name, m.last_name].filter(Boolean).join(' ') || `#${m.id}`,
+      })),
+    [membersOptions],
+  );
+
+  const hourSelectOptions = useMemo(
+    () =>
+      NUTRITION_HOUR_OPTIONS.map((h) => ({
+        value: String(h),
+        label: formatNutritionHour(h),
+      })),
+    [],
+  );
+
+  const vigenciaRange = useMemo(
+    () => bindDateRange(validFrom, validTo, setValidFrom, setValidTo),
+    [validFrom, validTo],
+  );
+
   const loadPlan = useCallback((mid: number) => {
     setLoadError(null);
     api
@@ -83,8 +110,12 @@ export function NutritionPlanPage() {
         }
         const nm = [p.first_name, p.last_name].filter(Boolean).join(' ').trim();
         setTitleName(nm || `Socio #${p.member_id}`);
-        setValidFrom(p.valid_from ?? '');
-        setValidTo(p.valid_to ?? '');
+        const vigencia = normalizeDateRange(
+          p.valid_from ?? '',
+          p.valid_to ?? '',
+        );
+        setValidFrom(vigencia.desde);
+        setValidTo(vigencia.hasta);
         const lines = slotsToMealLines(p.schedule_slots ?? []);
         setMealLines(lines.length ? lines : []);
       })
@@ -328,19 +359,13 @@ export function NutritionPlanPage() {
             <div className="member-form-grid">
               <label className="member-form-span2">
                 Miembro (la dieta es exclusiva de un solo socio)
-                <select
-                  value={selectedMemberId ?? ''}
-                  onChange={(e) => onMemberChange(e.target.value)}
+                <MmSelect
+                  value={selectedMemberId != null ? String(selectedMemberId) : ''}
+                  onValueChange={onMemberChange}
+                  options={memberSelectOptions}
+                  placeholder="— Seleccionar socio —"
                   required={isCreateRoute}
-                >
-                  <option value="">— Seleccionar socio —</option>
-                  {membersOptions.map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {[m.first_name, m.last_name].filter(Boolean).join(' ') ||
-                        `#${m.id}`}
-                    </option>
-                  ))}
-                </select>
+                />
               </label>
             </div>
           ) : (
@@ -355,18 +380,20 @@ export function NutritionPlanPage() {
           <div className="member-form-grid">
             <label>
               Desde
-              <input
-                type="date"
-                value={validFrom}
-                onChange={(e) => setValidFrom(e.target.value)}
+              <MmDatePicker
+                value={vigenciaRange.desde}
+                onChange={vigenciaRange.onDesdeChange}
+                max={vigenciaRange.maxDesde}
+                aria-label="Vigencia desde"
               />
             </label>
             <label>
               Hasta
-              <input
-                type="date"
-                value={validTo}
-                onChange={(e) => setValidTo(e.target.value)}
+              <MmDatePicker
+                value={vigenciaRange.hasta}
+                onChange={vigenciaRange.onHastaChange}
+                min={vigenciaRange.minHasta}
+                aria-label="Vigencia hasta"
               />
             </label>
           </div>
@@ -427,18 +454,14 @@ export function NutritionPlanPage() {
 
                   <label className="routine-weight-field">
                     <span className="muted small">Hora</span>
-                    <select
-                      value={line.hour}
-                      onChange={(e) =>
-                        patchMealAt(i, { hour: parseInt(e.target.value, 10) })
+                    <MmSelect
+                      value={String(line.hour)}
+                      onValueChange={(v) =>
+                        patchMealAt(i, { hour: parseInt(v, 10) })
                       }
-                    >
-                      {NUTRITION_HOUR_OPTIONS.map((h) => (
-                        <option key={h} value={h}>
-                          {formatNutritionHour(h)}
-                        </option>
-                      ))}
-                    </select>
+                      options={hourSelectOptions}
+                      aria-label={`Hora de ${line.name || 'comida'}`}
+                    />
                   </label>
 
                   <div className="routine-weekdays-block">

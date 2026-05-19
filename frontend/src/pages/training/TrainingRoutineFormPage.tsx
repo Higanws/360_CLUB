@@ -1,5 +1,6 @@
 import { type FormEvent, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
+import { MmSelect } from '../../components/ui/MmSelect';
 import { routes } from '../../config/member-management';
 import { api } from '../../lib/api';
 import {
@@ -70,6 +71,15 @@ export function TrainingRoutineFormPage({ mode }: { mode: Mode }) {
   const previewLevel = useMemo(
     () => previewRoutineDifficulty(orderedActivities),
     [orderedActivities],
+  );
+
+  const activitySelectOptions = useMemo(
+    () =>
+      catalog.map((a) => ({
+        value: String(a.id),
+        label: `${a.title} (${activityDifficultyLabel(a.difficulty_level)})`,
+      })),
+    [catalog],
   );
 
   useEffect(() => {
@@ -323,17 +333,12 @@ export function TrainingRoutineFormPage({ mode }: { mode: Mode }) {
               <span className="pay-manual-label">
                 Añadir ejercicio <span className="pay-req">*</span>
               </span>
-              <select
+              <MmSelect
                 value={pickId}
-                onChange={(e) => setPickId(e.target.value)}
-              >
-                <option value="">— Selecciona —</option>
-                {catalog.map((a) => (
-                  <option key={a.id} value={String(a.id)}>
-                    {a.title} ({activityDifficultyLabel(a.difficulty_level)})
-                  </option>
-                ))}
-              </select>
+                onValueChange={setPickId}
+                options={activitySelectOptions}
+                placeholder="— Selecciona —"
+              />
             </label>
             <button type="button" className="btn-outline" onClick={addActivity}>
               Añadir a la rutina

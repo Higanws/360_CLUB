@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { MmSearchField } from '../../components/ui/MmSearchField';
 import { routes } from '../../config/member-management';
 import { memberPortalRoutes } from '../../config/member-portal';
 import { api } from '../../lib/api';
@@ -139,19 +140,17 @@ export function TrainingAssignmentsListPage() {
       {error ? <p className="login-error">{error}</p> : null}
 
       <div className="pay-toolbar">
-        <label className="pay-search pay-search--grow">
-          <span>Filtrar por socio o entrenador</span>
-          <input
-            type="search"
-            value={filterQuery}
-            onChange={(e) => {
-              setFilterQuery(e.target.value);
-              setPage(0);
-            }}
-            placeholder="Socio, ID de socio, entrenador o título de rutina…"
-            autoComplete="off"
-          />
-        </label>
+        <MmSearchField
+          grow
+          label="Filtrar por socio o entrenador"
+          value={filterQuery}
+          onChange={(e) => {
+            setFilterQuery(e.target.value);
+            setPage(0);
+          }}
+          placeholder="Socio, ID de socio, entrenador o título de rutina…"
+          autoComplete="off"
+        />
       </div>
 
       <section className="members-panel mm-data-panel">

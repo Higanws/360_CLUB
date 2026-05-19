@@ -1,5 +1,6 @@
 import { type FormEvent, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { MmInput } from '../../components/ui/MmInput';
 import { gestionAbsoluteUrl, routes } from '../../config/member-management';
 import { api } from '../../lib/api';
 import { useAuth } from '../../context/AuthContext';
@@ -190,10 +191,10 @@ export function AccessControlKioskPage() {
               <label className="access-control-lookup-label muted" htmlFor="ac-kiosk-lookup">
                 Identificador del socio
               </label>
-              <input
+              <MmInput
                 id="ac-kiosk-lookup"
                 type="text"
-                className="member-picker-input access-control-lookup-input"
+                className="access-control-lookup-input"
                 placeholder="ID, código de socio o DNI"
                 value={lookup}
                 onChange={(ev) => setLookup(ev.target.value)}

@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { MmSearchField } from '../../components/ui/MmSearchField';
 import { routes } from '../../config/member-management';
 import { memberPortalRoutes } from '../../config/member-portal';
 import { api } from '../../lib/api';
@@ -113,18 +114,15 @@ export function TrainingRoutinesListPage() {
 
       <div className="pay-toolbar">
         <span className="muted">Mostrar entradas</span>
-        <label className="pay-search">
-          <span>Buscar:</span>
-          <input
-            type="search"
-            value={search}
-            onChange={(e) => {
-              setSearch(e.target.value);
-              setPage(0);
-            }}
-            placeholder="Título o nivel"
-          />
-        </label>
+        <MmSearchField
+          label="Buscar:"
+          value={search}
+          onChange={(e) => {
+            setSearch(e.target.value);
+            setPage(0);
+          }}
+          placeholder="Título o nivel"
+        />
       </div>
 
       <section className="members-panel mm-data-panel">

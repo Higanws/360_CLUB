@@ -1,5 +1,8 @@
-import { type FormEvent, useEffect, useState } from 'react';
+import { type FormEvent, useEffect, useMemo, useState } from 'react';
+import { bindDateRange } from '../lib/date-range';
 import { Link, useNavigate } from 'react-router-dom';
+import { MmDatePicker } from '../components/ui/MmDatePicker';
+import { MmSelect } from '../components/ui/MmSelect';
 import { routes } from '../config/member-management';
 import { memberPortalRoutes } from '../config/member-portal';
 import { api } from '../lib/api';
@@ -29,6 +32,11 @@ export function ManualMembershipPaymentPage() {
   const [paidAmount, setPaidAmount] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+
+  const vigenciaRange = useMemo(
+    () => bindDateRange(startDate, endDate, setStartDate, setEndDate),
+    [startDate, endDate],
+  );
 
   useEffect(() => {
     if (!loading && !user) navigate('/login', { replace: true });
@@ -138,36 +146,32 @@ export function ManualMembershipPaymentPage() {
             <span className="pay-manual-label">
               Miembro <span className="pay-req">*</span>
             </span>
-            <select
+            <MmSelect
               required
               value={memberId}
-              onChange={(e) => setMemberId(e.target.value)}
-            >
-              <option value="">Seleccione miembro</option>
-              {(options?.members ?? []).map((m) => (
-                <option key={m.id} value={String(m.id)}>
-                  {m.label || `Socio ${m.id}`}
-                </option>
-              ))}
-            </select>
+              onValueChange={setMemberId}
+              options={(options?.members ?? []).map((m) => ({
+                value: String(m.id),
+                label: m.label || `Socio ${m.id}`,
+              }))}
+              placeholder="Seleccione miembro"
+            />
           </label>
 
           <label className="pay-manual-row">
             <span className="pay-manual-label">
               Afiliación <span className="pay-req">*</span>
             </span>
-            <select
+            <MmSelect
               required
               value={membershipId}
-              onChange={(e) => setMembershipId(e.target.value)}
-            >
-              <option value="">Seleccione membresía</option>
-              {(options?.memberships ?? []).map((p) => (
-                <option key={p.id} value={String(p.id)}>
-                  {p.label ?? `Plan ${p.id}`}
-                </option>
-              ))}
-            </select>
+              onValueChange={setMembershipId}
+              options={(options?.memberships ?? []).map((p) => ({
+                value: String(p.id),
+                label: p.label ?? `Plan ${p.id}`,
+              }))}
+              placeholder="Seleccione membresía"
+            />
           </label>
 
           <label className="pay-manual-row">
@@ -208,18 +212,20 @@ export function ManualMembershipPaymentPage() {
               Membresía válida <span className="pay-req">*</span>
             </span>
             <div className="pay-manual-date-range">
-              <input
-                type="date"
+              <MmDatePicker
+                value={vigenciaRange.desde}
+                onChange={vigenciaRange.onDesdeChange}
+                max={vigenciaRange.maxDesde}
                 required
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
+                aria-label="Membresía válida desde"
               />
               <span className="pay-manual-a">a</span>
-              <input
-                type="date"
+              <MmDatePicker
+                value={vigenciaRange.hasta}
+                onChange={vigenciaRange.onHastaChange}
+                min={vigenciaRange.minHasta}
                 required
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
+                aria-label="Membresía válida hasta"
               />
             </div>
           </div>

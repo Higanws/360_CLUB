@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
+import { bindDateRange, normalizeDateRange } from '../lib/date-range';
 import type { FormEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
+import { MmDatePicker } from '../components/ui/MmDatePicker';
+import { MmSelect } from '../components/ui/MmSelect';
 import { routes } from '../config/member-management';
 import { memberPortalRoutes } from '../config/member-portal';
 import { api } from '../lib/api';
@@ -91,6 +94,17 @@ export function MemberFormPage({ mode }: { mode: Mode }) {
 
   const isEdit = mode === 'edit';
 
+  const membershipRange = useMemo(
+    () =>
+      bindDateRange(
+        membership_valid_from,
+        membership_valid_to,
+        setFrom,
+        setTo,
+      ),
+    [membership_valid_from, membership_valid_to],
+  );
+
   function optPhysicalNum(s: string): number | undefined {
     const t = s.trim();
     if (!t) return undefined;
@@ -140,8 +154,12 @@ export function MemberFormPage({ mode }: { mode: Mode }) {
         setZip(m.zipcode ?? '');
         setDniType((m.di_dni_type === 'DI' ? 'DI' : 'DNI') as 'DI' | 'DNI');
         setDniNum(m.di_dni_number ?? '');
-        setFrom(m.membership_valid_from ?? '');
-        setTo(m.membership_valid_to ?? '');
+        const vigencia = normalizeDateRange(
+          m.membership_valid_from ?? '',
+          m.membership_valid_to ?? '',
+        );
+        setFrom(vigencia.desde);
+        setTo(vigencia.hasta);
         setPlan(m.selected_membership ?? '');
         setStaff(
           m.assign_staff_mem != null ? String(m.assign_staff_mem) : '',
@@ -340,15 +358,16 @@ export function MemberFormPage({ mode }: { mode: Mode }) {
             <label className="member-form-span2">
               Documento (DI o DNI)
               <span className="member-form-inline">
-                <select
+                <MmSelect
                   value={di_dni_type}
-                  onChange={(e) =>
-                    setDniType(e.target.value as 'DI' | 'DNI')
-                  }
-                >
-                  <option value="DNI">DNI</option>
-                  <option value="DI">DI</option>
-                </select>
+                  onValueChange={(v) => setDniType(v as 'DI' | 'DNI')}
+                  options={[
+                    { value: 'DNI', label: 'DNI' },
+                    { value: 'DI', label: 'DI' },
+                  ]}
+                  className="mm-select-trigger--inline"
+                  aria-label="Tipo de documento"
+                />
                 <input
                   value={di_dni_number}
                   onChange={(e) => setDniNum(e.target.value)}
@@ -373,27 +392,24 @@ export function MemberFormPage({ mode }: { mode: Mode }) {
             </label>
             <label>
               Género
-              <select
+              <MmSelect
                 required
                 value={gender}
-                onChange={(e) =>
-                  setGender(e.target.value as GenderValue | '')
-                }
-              >
-                <option value="" disabled>
-                  Seleccionar…
-                </option>
-                <option value="male">Masculino</option>
-                <option value="female">Femenino</option>
-                <option value="other">Otro</option>
-              </select>
+                onValueChange={(v) => setGender(v as GenderValue)}
+                options={[
+                  { value: 'male', label: 'Masculino' },
+                  { value: 'female', label: 'Femenino' },
+                  { value: 'other', label: 'Otro' },
+                ]}
+                placeholder="Seleccionar…"
+              />
             </label>
             <label>
               Fecha de nacimiento
-              <input
-                type="date"
+              <MmDatePicker
                 value={birth_date}
-                onChange={(e) => setBirth(e.target.value)}
+                onChange={setBirth}
+                aria-label="Fecha de nacimiento"
               />
             </label>
             <label className="member-form-span2">
@@ -493,47 +509,49 @@ export function MemberFormPage({ mode }: { mode: Mode }) {
           <div className="member-form-grid">
             <label>
               Vigencia desde
-              <input
-                type="date"
-                value={membership_valid_from}
-                onChange={(e) => setFrom(e.target.value)}
+              <MmDatePicker
+                value={membershipRange.desde}
+                onChange={membershipRange.onDesdeChange}
+                max={membershipRange.maxDesde}
+                aria-label="Vigencia de membresía desde"
               />
             </label>
             <label>
               Vigencia hasta
-              <input
-                type="date"
-                value={membership_valid_to}
-                onChange={(e) => setTo(e.target.value)}
+              <MmDatePicker
+                value={membershipRange.hasta}
+                onChange={membershipRange.onHastaChange}
+                min={membershipRange.minHasta}
+                aria-label="Vigencia de membresía hasta"
               />
             </label>
             <label className="member-form-span2">
               Plan de membresía
-              <select
-                value={selected_membership}
-                onChange={(e) => setPlan(e.target.value)}
-              >
-                <option value="">— Ninguno —</option>
-                {(options?.memberships ?? []).map((p) => (
-                  <option key={p.id} value={String(p.id)}>
-                    {p.membership_label ?? `Plan ${p.id}`}
-                  </option>
-                ))}
-              </select>
+              <MmSelect
+                value={selected_membership || '__none__'}
+                onValueChange={(v) => setPlan(v === '__none__' ? '' : v)}
+                options={[
+                  { value: '__none__', label: '— Ninguno —' },
+                  ...(options?.memberships ?? []).map((p) => ({
+                    value: String(p.id),
+                    label: p.membership_label ?? `Plan ${p.id}`,
+                  })),
+                ]}
+              />
             </label>
             <label className="member-form-span2">
               Entrenador / staff asignado
-              <select
-                value={assign_staff_mem}
-                onChange={(e) => setStaff(e.target.value)}
-              >
-                <option value="">— Ninguno —</option>
-                {(options?.staff ?? []).map((s) => (
-                  <option key={s.id} value={String(s.id)}>
-                    {s.label || `Staff ${s.id}`}
-                  </option>
-                ))}
-              </select>
+              <MmSelect
+                value={assign_staff_mem || '__none__'}
+                onValueChange={(v) => setStaff(v === '__none__' ? '' : v)}
+                options={[
+                  { value: '__none__', label: '— Ninguno —' },
+                  ...(options?.staff ?? []).map((s) => ({
+                    value: String(s.id),
+                    label: s.label || `Staff ${s.id}`,
+                  })),
+                ]}
+              />
             </label>
             <label className="member-form-check">
               <input

@@ -1,0 +1,401 @@
+/**
+ * Club360 — capa UI (Radix + tokens). Bordes redondeados y fondos semitransparentes.
+ */
+
+:root {
+  --mm-ui-radius: 12px;
+  --mm-ui-radius-sm: 10px;
+  --mm-ui-surface: color-mix(in srgb, var(--bg-elevated) 88%, transparent);
+  --mm-ui-surface-solid: var(--bg-elevated);
+  --mm-ui-border: color-mix(in srgb, var(--border) 72%, transparent);
+  --mm-ui-shadow: 0 10px 36px color-mix(in srgb, var(--shadow) 85%, transparent);
+  --mm-ui-blur: blur(14px);
+}
+
+/* ——— Trigger / input ——— */
+.mm-select-trigger,
+.mm-ui-input {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 2.5rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: var(--mm-ui-radius-sm);
+  border: 1px solid var(--mm-ui-border);
+  background: var(--mm-ui-surface);
+  backdrop-filter: var(--mm-ui-blur);
+  -webkit-backdrop-filter: var(--mm-ui-blur);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.95rem;
+  line-height: 1.25;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease,
+    background 0.15s ease;
+}
+
+.mm-ui-input {
+  display: block;
+}
+
+.mm-select-trigger:hover,
+.mm-ui-input:hover {
+  border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
+}
+
+.mm-select-trigger:focus-visible,
+.mm-ui-input:focus-visible {
+  outline: none;
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.mm-select-trigger[data-disabled],
+.mm-ui-input:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.mm-select-trigger[data-placeholder] {
+  color: var(--text-muted);
+}
+
+.mm-select-icon {
+  display: flex;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.mm-select-value {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ——— Dropdown (Select + Combobox) ——— */
+.mm-select-content,
+.mm-combobox-content {
+  overflow: hidden;
+  border-radius: var(--mm-ui-radius);
+  border: 1px solid var(--mm-ui-border);
+  background: var(--mm-ui-surface);
+  backdrop-filter: var(--mm-ui-blur);
+  -webkit-backdrop-filter: var(--mm-ui-blur);
+  box-shadow: var(--mm-ui-shadow);
+  z-index: 2000;
+  min-width: var(--radix-select-trigger-width);
+  max-height: min(280px, 50vh);
+}
+
+.mm-select-viewport {
+  padding: 0.35rem;
+}
+
+.mm-select-item,
+.mm-combobox-item {
+  display: flex;
+  align-items: center;
+  padding: 0.5rem 0.65rem;
+  border-radius: 8px;
+  font-size: 0.92rem;
+  line-height: 1.3;
+  color: var(--text);
+  cursor: pointer;
+  outline: none;
+  user-select: none;
+}
+
+.mm-select-item[data-highlighted],
+.mm-combobox-item[data-highlighted],
+.mm-combobox-item:hover {
+  background: var(--accent-soft);
+  color: var(--text);
+}
+
+.mm-select-item[data-disabled] {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+.mm-select-item-indicator {
+  margin-left: auto;
+  padding-left: 0.5rem;
+  color: var(--accent);
+}
+
+.mm-combobox-empty {
+  padding: 0.65rem 0.75rem;
+  font-size: 0.88rem;
+  color: var(--text-muted);
+}
+
+.mm-combobox-anchor {
+  position: relative;
+  width: 100%;
+}
+
+.mm-combobox-content {
+  width: var(--radix-popover-trigger-width);
+  padding: 0.35rem;
+  overflow-y: auto;
+}
+
+/* Búsqueda en listados (reemplaza .pay-search input) */
+.mm-search-field {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.mm-search-field .mm-ui-input {
+  min-width: 200px;
+  max-width: 420px;
+}
+
+.mm-search-field--grow {
+  flex: 1 1 260px;
+  min-width: 0;
+}
+
+.mm-search-field--grow .mm-ui-input {
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+  max-width: none;
+}
+
+.mm-select-trigger--inline {
+  width: auto;
+  min-width: 5.75rem;
+  flex: 0 0 auto;
+}
+
+.members-page-size .mm-select-trigger {
+  min-width: 5.5rem;
+}
+
+/* ——— Date picker (Popover + DayPicker) ——— */
+.mm-date-picker-native-required {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.mm-date-picker-trigger {
+  cursor: pointer;
+  text-align: left;
+}
+
+.mm-date-picker-trigger--empty .mm-select-value {
+  color: var(--text-muted);
+}
+
+.mm-date-picker-placeholder {
+  color: var(--text-muted);
+}
+
+.mm-date-picker-icon {
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+
+.mm-date-picker-content {
+  z-index: 2100;
+  padding: 0.65rem 0.7rem 0.55rem;
+  border-radius: var(--mm-ui-radius);
+  border: 1px solid var(--mm-ui-border);
+  background: var(--mm-ui-surface);
+  backdrop-filter: var(--mm-ui-blur);
+  -webkit-backdrop-filter: var(--mm-ui-blur);
+  box-shadow: var(--mm-ui-shadow);
+}
+
+.mm-dp {
+  --mm-dp-accent: var(--accent);
+  --mm-dp-accent-soft: var(--accent-soft);
+  font-size: 0.88rem;
+  color: var(--text);
+}
+
+.mm-dp-months {
+  display: flex;
+}
+
+.mm-dp-month {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.mm-dp-caption {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  width: fit-content;
+  max-width: 100%;
+  margin: 0 auto 0.55rem;
+  padding: 0;
+}
+
+.mm-dp-caption-label {
+  font-weight: 600;
+  font-size: 0.92rem;
+  text-transform: capitalize;
+  text-align: center;
+  white-space: nowrap;
+  padding: 0 0.15rem;
+}
+
+.mm-dp-chevron {
+  fill: currentColor;
+}
+
+.mm-dp-nav-btn {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.85rem;
+  height: 1.85rem;
+  border: 1px solid var(--mm-ui-border);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--bg-elevated) 70%, transparent);
+  color: var(--text);
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.mm-dp-nav-btn:hover {
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
+  background: var(--accent-soft);
+}
+
+.mm-dp-nav-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+
+.mm-dp-weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, 2.1rem);
+  margin-bottom: 0.25rem;
+}
+
+.mm-dp-weekday {
+  text-align: center;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.mm-dp-weeks {
+  border-collapse: collapse;
+}
+
+.mm-dp-week {
+  display: grid;
+  grid-template-columns: repeat(7, 2.1rem);
+}
+
+.mm-dp-day {
+  padding: 0.1rem;
+}
+
+.mm-dp-day-btn {
+  width: 2rem;
+  height: 2rem;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.86rem;
+  cursor: pointer;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease;
+}
+
+.mm-dp-day-btn:hover {
+  background: color-mix(in srgb, var(--accent-soft) 85%, transparent);
+}
+
+.mm-dp-day-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+
+.mm-dp-day--selected .mm-dp-day-btn {
+  background: var(--mm-dp-accent);
+  color: #fff;
+  font-weight: 600;
+}
+
+.mm-dp-day--selected .mm-dp-day-btn:hover {
+  background: var(--accent-hover);
+}
+
+.mm-dp-day--today:not(.mm-dp-day--selected) .mm-dp-day-btn {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 55%, var(--border));
+}
+
+.mm-dp-day--outside .mm-dp-day-btn {
+  color: var(--text-muted);
+  opacity: 0.45;
+}
+
+.mm-dp-day--disabled .mm-dp-day-btn {
+  opacity: 0.35;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.mm-date-picker-footer {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-top: 0.45rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--mm-ui-border);
+}
+
+.mm-date-picker-footer-btn {
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 0.84rem;
+  cursor: pointer;
+  padding: 0.25rem 0.35rem;
+  border-radius: 6px;
+}
+
+.mm-date-picker-footer-btn:hover {
+  color: var(--text);
+  background: var(--accent-soft);
+}
+
+.mm-date-picker-footer-btn--primary {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.mm-date-picker-footer-btn--primary:hover {
+  color: var(--accent-hover);
+}

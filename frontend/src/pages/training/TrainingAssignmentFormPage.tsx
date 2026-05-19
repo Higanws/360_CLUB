@@ -1,5 +1,7 @@
 import { type FormEvent, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { MmCombobox } from '../../components/ui/MmCombobox';
+import { MmSelect } from '../../components/ui/MmSelect';
 import { routes } from '../../config/member-management';
 import { api } from '../../lib/api';
 import { fetchAllMembersLiteRows } from '../../lib/members-api';
@@ -102,6 +104,33 @@ export function TrainingAssignmentFormPage() {
       })
       .slice(0, 20);
   }, [members, memberSearch, memberIds]);
+
+  const memberComboboxOptions = useMemo(
+    () =>
+      membersPickList.map((m) => ({
+        value: String(m.id),
+        label: personLabel(m, m.id),
+      })),
+    [membersPickList],
+  );
+
+  const routineSelectOptions = useMemo(
+    () =>
+      routines.map((r) => ({
+        value: String(r.id),
+        label: `${r.title} (${r.exercise_count} ejercicios)`,
+      })),
+    [routines],
+  );
+
+  const staffSelectOptions = useMemo(
+    () =>
+      staff.map((s) => ({
+        value: String(s.id),
+        label: personLabel(s, s.id),
+      })),
+    [staff],
+  );
 
   useEffect(() => {
     if (!user) return;
@@ -208,18 +237,13 @@ export function TrainingAssignmentFormPage() {
             <span className="pay-manual-label">
               Rutina <span className="pay-req">*</span>
             </span>
-            <select
+            <MmSelect
               required
               value={routineId}
-              onChange={(e) => setRoutineId(e.target.value)}
-            >
-              <option value="">— Selecciona —</option>
-              {routines.map((r) => (
-                <option key={r.id} value={String(r.id)}>
-                  {r.title} ({r.exercise_count} ejercicios)
-                </option>
-              ))}
-            </select>
+              onValueChange={setRoutineId}
+              options={routineSelectOptions}
+              placeholder="— Selecciona —"
+            />
           </label>
 
           <div className="pay-manual-row member-picker-block">
@@ -231,41 +255,15 @@ export function TrainingAssignmentFormPage() {
                 Busca por nombre o ID y pulsa en un socio de la lista para
                 añadirlo. Repite para varios socios.
               </p>
-              <input
-                type="search"
-                className="member-picker-input"
-                value={memberSearch}
-                onChange={(e) => setMemberSearch(e.target.value)}
+              <MmCombobox
+                query={memberSearch}
+                onQueryChange={setMemberSearch}
+                options={memberComboboxOptions}
+                onSelect={(v) => addMemberFromPicker(parseInt(v, 10))}
                 placeholder="Buscar socio…"
-                autoComplete="off"
-                aria-controls="member-picker-results"
-                aria-expanded={memberSearch.trim().length > 0}
+                emptyMessage="Ningún socio coincide (o ya está añadido)."
+                aria-label="Buscar socio para añadir"
               />
-              {memberSearch.trim() ? (
-                <ul
-                  id="member-picker-results"
-                  className="member-picker-results"
-                  role="listbox"
-                >
-                  {membersPickList.length === 0 ? (
-                    <li className="member-picker-empty muted">
-                      Ningún socio coincide (o ya está añadido).
-                    </li>
-                  ) : (
-                    membersPickList.map((m) => (
-                      <li key={m.id} role="option">
-                        <button
-                          type="button"
-                          className="member-picker-option"
-                          onClick={() => addMemberFromPicker(m.id)}
-                        >
-                          {personLabel(m, m.id)}
-                        </button>
-                      </li>
-                    ))
-                  )}
-                </ul>
-              ) : null}
             </div>
           </div>
 
@@ -295,18 +293,13 @@ export function TrainingAssignmentFormPage() {
               <span className="pay-manual-label">
                 Añadir entrenador <span className="pay-req">*</span>
               </span>
-              <select
+              <MmSelect
                 value={pickTrainer}
-                onChange={(e) => setPickTrainer(e.target.value)}
+                onValueChange={setPickTrainer}
+                options={staffSelectOptions}
+                placeholder="— Selecciona —"
                 disabled={isStaffOnly}
-              >
-                <option value="">— Selecciona —</option>
-                {staff.map((s) => (
-                  <option key={s.id} value={String(s.id)}>
-                    {personLabel(s, s.id)}
-                  </option>
-                ))}
-              </select>
+              />
             </label>
             <button
               type="button"

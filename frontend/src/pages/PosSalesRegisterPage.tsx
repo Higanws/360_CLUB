@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { useEffect, useMemo, useState } from 'react';
+import { bindDateRange } from '../lib/date-range';
 import { Link, useNavigate } from 'react-router-dom';
 import { routes } from '../config/member-management';
 import { memberPortalRoutes } from '../config/member-portal';
@@ -7,6 +8,7 @@ import { api } from '../lib/api';
 import { posPaymentLabel } from '../lib/pos-payment';
 import { extractApiMessage } from '../lib/extract-api-message';
 import { formatMoney } from '../lib/format-money';
+import { MmDatePicker } from '../components/ui/MmDatePicker';
 import { useAuth } from '../context/AuthContext';
 
 type SaleRow = {
@@ -47,6 +49,11 @@ export function PosSalesRegisterPage() {
   const [error, setError] = useState<string | null>(null);
   const [loadingSales, setLoadingSales] = useState(false);
   const [exporting, setExporting] = useState(false);
+
+  const salesRange = useMemo(
+    () => bindDateRange(from, to, setFrom, setTo),
+    [from, to],
+  );
 
   useEffect(() => {
     if (!loading && !user) navigate('/login', { replace: true });
@@ -157,18 +164,20 @@ export function PosSalesRegisterPage() {
         <div className="pay-toolbar">
           <label>
             Desde
-            <input
-              type="date"
-              value={from}
-              onChange={(e) => setFrom(e.target.value)}
+            <MmDatePicker
+              value={salesRange.desde}
+              onChange={salesRange.onDesdeChange}
+              max={salesRange.maxDesde}
+              aria-label="Ventas desde"
             />
           </label>
           <label>
             Hasta
-            <input
-              type="date"
-              value={to}
-              onChange={(e) => setTo(e.target.value)}
+            <MmDatePicker
+              value={salesRange.hasta}
+              onChange={salesRange.onHastaChange}
+              min={salesRange.minHasta}
+              aria-label="Ventas hasta"
             />
           </label>
           <button
