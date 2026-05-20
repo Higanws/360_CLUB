@@ -968,19 +968,11 @@ code {
 }
 
 .access-control-filters {
-  display: flex;
-  flex-wrap: wrap;
   justify-content: center;
-  align-items: flex-end;
-  gap: 1rem 1.35rem;
 }
 
-.access-control-filters label {
-  display: flex;
-  flex-direction: column;
+.access-control-filters.mm-filter-toolbar > label {
   align-items: center;
-  gap: 0.4rem;
-  font-size: 0.85rem;
 }
 
 .access-control-filters .member-picker-input {
@@ -1814,20 +1806,6 @@ code {
   border-radius: 8px;
   background: var(--bg-elevated);
   padding: 1rem;
-}
-
-/* Registro de ventas — misma caja y ritmo horizontal que catálogo/ticket en Vender */
-.pos-panel--sales-register .pay-toolbar {
-  justify-content: flex-start;
-  flex-wrap: wrap;
-  gap: 0.75rem 1rem;
-}
-
-.pos-panel--sales-register .pay-toolbar label {
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-  font-size: 0.85rem;
 }
 
 .pos-panel--sales-register .pay-footer-note {

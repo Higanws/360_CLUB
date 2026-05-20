@@ -88,7 +88,7 @@ export function AccessControlLogPage() {
 
         <section className="members-panel members-panel--pad mm-data-panel mm-module-centered">
           <form
-            className="mm-data-panel__toolbar access-control-filters"
+            className="mm-data-panel__toolbar access-control-filters mm-filter-toolbar"
             onSubmit={(e) => {
               e.preventDefault();
               load();

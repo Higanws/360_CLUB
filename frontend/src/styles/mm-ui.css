@@ -178,6 +178,37 @@
   min-width: 5.5rem;
 }
 
+/* Toolbar: etiqueta arriba + control abajo, botones alineados al control */
+.mm-filter-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.75rem 1.25rem;
+}
+
+.mm-filter-toolbar > label {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+  min-width: 0;
+}
+
+.mm-filter-toolbar > label .mm-date-picker-trigger,
+.mm-filter-toolbar > label .mm-select-trigger {
+  min-width: 10.5rem;
+}
+
+.pay-toolbar.mm-filter-toolbar {
+  align-items: flex-end;
+  justify-content: flex-start;
+}
+
+.mm-data-panel__toolbar.mm-filter-toolbar {
+  align-items: flex-end;
+}
+
 /* ——— Date picker (Popover + DayPicker) ——— */
 .mm-date-picker-native-required {
   position: absolute;

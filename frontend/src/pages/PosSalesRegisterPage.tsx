@@ -161,7 +161,7 @@ export function PosSalesRegisterPage() {
       {error ? <p className="login-error">{error}</p> : null}
 
       <section className="pos-panel pos-panel--sales-register">
-        <div className="pay-toolbar">
+        <div className="pay-toolbar mm-filter-toolbar">
           <label>
             Desde
             <MmDatePicker
