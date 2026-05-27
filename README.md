@@ -1,6 +1,6 @@
 # Club360
 
-Réplica moderna del sistema de gestión de gimnasios (**React + NestJS + MariaDB/MySQL**). Referencia de negocio: carpeta `PHP_version` (CakePHP).
+Sistema de gestión de gimnasios (**React + NestJS + MariaDB/MySQL**).
 
 ## Documentación
 
