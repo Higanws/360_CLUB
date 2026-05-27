@@ -75,6 +75,18 @@ Reset wizard: borrar `backend/data/installed.txt` y `.env` generado.
 
 ## 2. Producción en VPS
 
+### Opción A — Todo en Docker (recomendada para el VPS de prueba)
+
+Stack en [`deploy/`](../deploy/README.md): `docker compose up -d --build`.
+
+- App en `http://<IP>:8080` (puerto configurable)
+- **Portainer** en `http://<IP>:9000` para gestionar contenedores sin depender solo de SSH
+- Seed y API preconfigurados vía `deploy/.env`
+
+Guía: [docker.md](./docker.md).
+
+### Opción B — Node + Nginx en el host
+
 ```text
 Usuario → https://tu-dominio.com
             ├── /     → Nginx → frontend/dist

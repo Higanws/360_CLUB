@@ -1,0 +1,137 @@
+# Club360 — stack completo para VPS / pruebas locales con Docker
+#
+# Uso (desde deploy/):
+#   cp .env.example .env    # editar JWT_SECRET, contraseñas y FRONTEND_URL
+#   docker compose up -d --build
+#
+# Accesos por defecto (ajustar en .env):
+#   App:        http://<host>:8080
+#   Portainer:  http://<host>:9000   (gestión visual de contenedores)
+#
+# Primera subida: db-init aplica esquema + seed demo; la API arranca con instalación marcada.
+
+name: club360
+
+services:
+  mariadb:
+    image: mariadb:11.4
+    container_name: club360-mariadb
+    restart: unless-stopped
+    environment:
+      MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD:-club360_root_change_me}
+      MARIADB_DATABASE: ${MARIADB_DATABASE:-club360}
+    volumes:
+      - club360_mariadb_data:/var/lib/mysql
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    healthcheck:
+      test:
+        [
+          'CMD-SHELL',
+          'mariadb-admin ping -h 127.0.0.1 -uroot -p"$$MARIADB_ROOT_PASSWORD" || exit 1',
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 40s
+    networks:
+      - club360
+
+  db-init:
+    build:
+      context: ..
+      dockerfile: deploy/db-init/Dockerfile
+    container_name: club360-db-init
+    environment:
+      DATABASE_HOST: mariadb
+      DATABASE_PORT: 3306
+      DATABASE_USER: root
+      DATABASE_PASSWORD: ${MARIADB_ROOT_PASSWORD:-club360_root_change_me}
+      DATABASE_NAME: ${MARIADB_DATABASE:-club360}
+      DATABASE_URL: mysql://root:${MARIADB_ROOT_PASSWORD:-club360_root_change_me}@mariadb:3306/${MARIADB_DATABASE:-club360}
+    depends_on:
+      mariadb:
+        condition: service_healthy
+    restart: 'no'
+    networks:
+      - club360
+
+  api:
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
+    container_name: club360-api
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:8080}
+      DATABASE_HOST: mariadb
+      DATABASE_PORT: 3306
+      DATABASE_USER: root
+      DATABASE_PASSWORD: ${MARIADB_ROOT_PASSWORD:-club360_root_change_me}
+      DATABASE_NAME: ${MARIADB_DATABASE:-club360}
+      DATABASE_URL: mysql://root:${MARIADB_ROOT_PASSWORD:-club360_root_change_me}@mariadb:3306/${MARIADB_DATABASE:-club360}
+      JWT_SECRET: ${JWT_SECRET:?Definir JWT_SECRET en deploy/.env}
+      JWT_ACCESS_SECONDS: ${JWT_ACCESS_SECONDS:-1800}
+      JWT_REFRESH_SECONDS: ${JWT_REFRESH_SECONDS:-604800}
+      CLUB360_AUTO_INSTALL: ${CLUB360_AUTO_INSTALL:-1}
+    volumes:
+      - club360_backend_data:/app/data
+    depends_on:
+      db-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        [
+          'CMD-SHELL',
+          "node -e \"fetch('http://127.0.0.1:3000/api/install/status').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\"",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+      start_period: 40s
+    networks:
+      - club360
+
+  web:
+    build:
+      context: ..
+      dockerfile: frontend/Dockerfile
+      args:
+        VITE_API_URL: /api
+    container_name: club360-web
+    restart: unless-stopped
+    ports:
+      - '${WEB_PORT:-8080}:80'
+    depends_on:
+      api:
+        condition: service_healthy
+    networks:
+      - club360
+
+  # Interfaz web para gestionar contenedores, imágenes, volúmenes y logs (sin depender solo de SSH)
+  portainer:
+    image: portainer/portainer-ce:2.27.3
+    container_name: club360-portainer
+    restart: unless-stopped
+    ports:
+      - '${PORTAINER_HTTP_PORT:-9000}:9000'
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - club360_portainer_data:/data
+    networks:
+      - club360
+
+volumes:
+  club360_mariadb_data:
+    name: club360_mariadb_data
+  club360_backend_data:
+    name: club360_backend_data
+  club360_portainer_data:
+    name: club360_portainer_data
+
+networks:
+  club360:
+    name: club360

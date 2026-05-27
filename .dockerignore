@@ -1,5 +1,26 @@
+# Builds Docker desde la raíz del repo (deploy/docker-compose.yml)
+
+.git
+.gitignore
+**/.git
+
 **/node_modules
 **/dist
-**/.git
-frontend
-.git
+**/.env
+**/.env.*
+!**/.env.example
+
+backend/data
+frontend/node_modules
+backend/node_modules
+
+*.md
+!docs/docker.md
+
+.cursor
+agent-transcripts
+terminals
+
+# Compose y docs no van dentro de las imágenes de app
+deploy/.env
+deploy/README.md
