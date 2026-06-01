@@ -1,5 +1,6 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { api, apiUrl } from '../lib/api';
+import { waitForApiBoot } from '../lib/api-boot-probe';
 import { extractApiMessage } from '../lib/extract-api-message';
 import { ThemeToggle } from '../components/ThemeToggle';
 
@@ -158,12 +159,33 @@ export function InstallWizard() {
   const [error, setError] = useState<string | null>(null);
   const [errorHint, setErrorHint] = useState<string | null>(null);
   const [doneMsg, setDoneMsg] = useState<string | null>(null);
+  const [dockerAutoRestart, setDockerAutoRestart] = useState(false);
+  const [waitingForRestart, setWaitingForRestart] = useState(false);
   const [dbCheckSummary, setDbCheckSummary] = useState<string | null>(null);
   const [installProgressLines, setInstallProgressLines] = useState<
     InstallProgressLine[]
   >([]);
 
   const resolvedMysql = parseMysqlHostPort(dbHost);
+
+  useEffect(() => {
+    if (step !== 4 || !dockerAutoRestart) {
+      return;
+    }
+    let alive = true;
+    setWaitingForRestart(true);
+    void (async () => {
+      const ok = await waitForApiBoot();
+      if (!alive) return;
+      setWaitingForRestart(false);
+      if (ok) {
+        window.location.reload();
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [step, dockerAutoRestart]);
 
   async function testDb() {
     setError(null);
@@ -273,7 +295,10 @@ export function InstallWizard() {
         },
       );
 
-      const statusRes = await api.get<{ installed: boolean }>('/install/status');
+      const statusRes = await api.get<{
+        installed: boolean;
+        dockerAutoRestart?: boolean;
+      }>('/install/status');
       if (!statusRes.data?.installed) {
         setError(
           'Las tablas pueden haberse creado, pero no se registró la instalación en el servidor (backend/data). No continúes hasta revisar permisos o los logs del backend.',
@@ -281,6 +306,7 @@ export function InstallWizard() {
         return;
       }
 
+      setDockerAutoRestart(!!statusRes.data.dockerAutoRestart);
       setDoneMsg(streamResult.message);
       setStep(4);
     } catch (err: unknown) {
@@ -546,28 +572,51 @@ export function InstallWizard() {
             <section className="wizard-section">
               <h1>Listo</h1>
               <p className="muted">{doneMsg}</p>
-              <ol className="wizard-restart muted">
-                <li>
-                  <strong>Obligatorio:</strong> detén el proceso del backend (Ctrl+C
-                  en la terminal donde corre Nest).
-                </li>
-                <li>
-                  Vuelve a ejecutar <code>npm run start:dev</code> en la carpeta{' '}
-                  <code>backend</code> para cargar el <code>.env</code> y activar login
-                  y base de datos. Sin este paso verás «Cannot POST /api/auth/login».
-                </li>
-                <li>
-                  Solo entonces pulsa «Continuar» (recarga la app y comprueba que la API
-                  está lista).
-                </li>
-              </ol>
-              <button
-                type="button"
-                className="btn-primary"
-                onClick={() => window.location.reload()}
-              >
-                Continuar (ya reinicié el backend)
-              </button>
+              {dockerAutoRestart ? (
+                <>
+                  <p className="muted">
+                    {waitingForRestart
+                      ? 'Esperando a que la API reinicie y cargue login y base de datos…'
+                      : 'Si la app no continúa sola, recargá la página o ejecutá en la terminal: docker compose restart api'}
+                  </p>
+                  {waitingForRestart ? (
+                    <p className="muted">No hace falta detener contenedores a mano.</p>
+                  ) : (
+                    <button
+                      type="button"
+                      className="btn-primary"
+                      onClick={() => window.location.reload()}
+                    >
+                      Recargar la app
+                    </button>
+                  )}
+                </>
+              ) : (
+                <>
+                  <ol className="wizard-restart muted">
+                    <li>
+                      <strong>Obligatorio:</strong> detén el proceso del backend (Ctrl+C
+                      en la terminal donde corre Nest).
+                    </li>
+                    <li>
+                      Vuelve a ejecutar <code>npm run start:dev</code> en la carpeta{' '}
+                      <code>backend</code> para cargar el <code>.env</code> y activar login
+                      y base de datos. Sin este paso verás «Cannot POST /api/auth/login».
+                    </li>
+                    <li>
+                      Solo entonces pulsa «Continuar» (recarga la app y comprueba que la API
+                      está lista).
+                    </li>
+                  </ol>
+                  <button
+                    type="button"
+                    className="btn-primary"
+                    onClick={() => window.location.reload()}
+                  >
+                    Continuar (ya reinicié el backend)
+                  </button>
+                </>
+              )}
             </section>
           )}
         </div>

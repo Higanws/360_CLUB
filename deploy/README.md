@@ -32,12 +32,11 @@ La primera vez en Portainer creás usuario admin local (solo para gestionar Dock
 | Contenedor | Rol |
 |------------|-----|
 | `club360-mariadb` | Base de datos persistente |
-| `club360-db-init` | Job único: `schema_mysql.sql` + `seed_mvp.sql` |
-| `club360-api` | NestJS en `:3000` (red interna) |
+| `club360-api` | NestJS en `:3000` (red interna); el **wizard** aplica esquema y seed |
 | `club360-web` | Nginx: SPA + proxy `/api` → API |
 | `club360-portainer` | UI para ver logs, reiniciar servicios, volúmenes, etc. |
 
-Credenciales demo tras el seed: ver [base-de-datos.md](../docs/base-de-datos.md) (usuario `admin` / `admin` si aplica al seed).
+Tras completar el asistente, la API **se reinicia sola** (`CLUB360_DOCKER=1`) y la app continúa sin pasos manuales.
 
 ## Comandos útiles
 
@@ -58,7 +57,7 @@ docker compose down -v       # ¡borra volúmenes y la BD!
 
 ## Wizard vs instalación automática
 
-- `CLUB360_AUTO_INSTALL=1` (por defecto): tras `db-init`, la API arranca ya “instalada”
-- `CLUB360_AUTO_INSTALL=0`: podés usar el asistente web; conviene no ejecutar seed automático o vaciar la BD antes
+- `CLUB360_AUTO_INSTALL=0` (por defecto): el asistente web aplica `schema_mysql.sql` y `seed_mvp.sql`
+- `CLUB360_AUTO_INSTALL=1`: salta el wizard y marca la instalación hecha (solo si la BD ya está lista)
 
 Documentación ampliada: [docs/docker.md](../docs/docker.md).

@@ -21,6 +21,17 @@ import {
 } from './prisma-install.helper';
 import { applyMvpSchemaDdl, applyMvpSeed } from './sql-install.helper';
 
+/** Tras el wizard, Nest solo carga TypeORM/Auth al reiniciar el proceso. En Docker salimos con código 0. */
+function scheduleApiRestartIfDocker(logger: Logger): void {
+  if (process.env.CLUB360_DOCKER !== '1') {
+    return;
+  }
+  logger.log(
+    'Modo Docker: reiniciando el proceso de la API para cargar login y base de datos…',
+  );
+  setTimeout(() => process.exit(0), 1500);
+}
+
 /** Evento de avance para el asistente (SSE) o logs. */
 export type InstallProgressEvent = {
   step: string;
@@ -452,13 +463,17 @@ export class InstallService {
 
     await conn.end();
 
-    const jwtSecret = randomBytes(32).toString('hex');
+    const jwtSecret =
+      process.env.JWT_SECRET?.trim() || randomBytes(32).toString('hex');
+    const nodeEnv = process.env.NODE_ENV?.trim() || 'development';
+    const frontendUrl =
+      process.env.FRONTEND_URL?.trim() || 'http://localhost:5173';
 
     const envLines = [
       '# Generado por el asistente de instalación — no commitees secretos reales',
-      `NODE_ENV=development`,
+      `NODE_ENV=${nodeEnv}`,
       `PORT=3000`,
-      `FRONTEND_URL=http://localhost:5173`,
+      `FRONTEND_URL=${frontendUrl}`,
       ``,
       `DATABASE_HOST=${escapeEnvValue(dto.host)}`,
       `DATABASE_PORT=${dto.port}`,
@@ -493,10 +508,14 @@ export class InstallService {
 
     this.logger.log('Instalación completada. Reinicia el servidor API para cargar la nueva configuración.');
 
+    scheduleApiRestartIfDocker(this.logger);
+
+    const dockerMode = process.env.CLUB360_DOCKER === '1';
     return {
       success: true,
-      message:
-        'Base vaciada, esquema y seed demo aplicados, administrador actualizado. Reinicia el proceso del backend (npm run start:dev) para aplicar el archivo .env.',
+      message: dockerMode
+        ? 'Instalación completada. La API se reiniciará sola en unos segundos; esperá y la app continuará.'
+        : 'Base vaciada, esquema y seed demo aplicados, administrador actualizado. Reinicia el proceso del backend (npm run start:dev) para aplicar el archivo .env.',
       adminUsername: adminUser,
     };
   }

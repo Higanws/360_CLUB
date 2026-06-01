@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
-import axios from 'axios';
 import { api } from './lib/api';
+import { isApiFullyBooted, waitForApiBoot } from './lib/api-boot-probe';
 import { AuthProvider } from './context/AuthContext';
 import App from './App';
 import { InstallWizard } from './pages/InstallWizard';
@@ -15,45 +15,10 @@ type Phase =
 const STATUS_ATTEMPTS = 30;
 const STATUS_DELAY_MS = 400;
 
-/**
- * Tras escribir `data/installed.txt`, Nest **no recarga** Auth/TypeORM en caliente:
- * hace falta reiniciar el proceso. Comprobamos endpoints que solo existen con el stack completo.
- */
-async function isApiFullyBooted(): Promise<boolean> {
-  try {
-    const res = await api.get<{ ok?: boolean }>('/health/database');
-    if (res.status === 200 && res.data?.ok === true) {
-      return true;
-    }
-  } catch (e) {
-    if (axios.isAxiosError(e) && e.response?.status === 503) {
-      return true;
-    }
-  }
-
-  try {
-    await api.get('/auth/me');
-  } catch (e) {
-    if (axios.isAxiosError(e)) {
-      const s = e.response?.status;
-      /** Ruta montada: sin JWT el guard responde 401 (u ocasionalmente 403). */
-      if (s === 401 || s === 403) {
-        return true;
-      }
-    }
-  }
-
-  try {
-    const res = await api.get('/settings/branding');
-    return res.status === 200;
-  } catch {
-    return false;
-  }
-}
-
 export function RootApp() {
   const [phase, setPhase] = useState<Phase>('loading');
   const [bootDetail, setBootDetail] = useState<string | null>(null);
+  const [dockerAutoRestart, setDockerAutoRestart] = useState(false);
 
   const probeBackend = useCallback(async (): Promise<Phase> => {
     let installed = false;
@@ -63,8 +28,12 @@ export function RootApp() {
         setBootDetail(`Conectando con la API (${i + 1}/${STATUS_ATTEMPTS})…`);
       }
       try {
-        const res = await api.get<{ installed: boolean }>('/install/status');
+        const res = await api.get<{
+          installed: boolean;
+          dockerAutoRestart?: boolean;
+        }>('/install/status');
         installed = !!res.data?.installed;
+        setDockerAutoRestart(!!res.data?.dockerAutoRestart);
         gotStatus = true;
         break;
       } catch {
@@ -103,6 +72,27 @@ export function RootApp() {
       alive = false;
     };
   }, [probeBackend]);
+
+  useEffect(() => {
+    if (phase !== 'needs-backend-restart' || !dockerAutoRestart) {
+      return;
+    }
+    let alive = true;
+    setBootDetail('Reiniciando la API…');
+    void (async () => {
+      const ok = await waitForApiBoot();
+      if (!alive) return;
+      if (ok) {
+        setBootDetail(null);
+        setPhase('ready');
+      } else {
+        setBootDetail(null);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [phase, dockerAutoRestart]);
 
   async function retryAfterRestart() {
     setPhase('loading');
@@ -144,34 +134,48 @@ export function RootApp() {
   if (phase === 'needs-backend-restart') {
     return (
       <div className="boot-screen boot-screen--error">
-        <h1 className="boot-screen-title">Reinicio del backend necesario</h1>
-        <p>
-          La instalación ya está registrada en el servidor, pero este proceso de la
-          API se inició <strong>antes</strong> de completar el asistente. Los módulos
-          de login y base de datos solo se cargan al <strong>arranque</strong> de Nest.
-        </p>
-        <ol className="muted" style={{ textAlign: 'left', maxWidth: 520 }}>
-          <li>En la terminal del backend, pulsa Ctrl+C para detenerlo.</li>
-          <li>
-            Vuelve a ejecutar <code>npm run start:dev</code> en la carpeta{' '}
-            <code>backend</code>.
-          </li>
-          <li>Pulsa el botón de abajo (o recarga la página).</li>
-        </ol>
-        <p className="muted">
-          Si ya reiniciaste el backend y sigues aquí, comprueba que el puerto del
-          proxy (Vite → API) coincide con el <code>PORT</code> de <code>backend/.env</code>.
-          También puedes recargar con Ctrl+F5.
-        </p>
-        <p>
-          <button
-            type="button"
-            className="btn-primary"
-            onClick={() => void retryAfterRestart()}
-          >
-            Ya reinicié el backend — comprobar de nuevo
-          </button>
-        </p>
+        <h1 className="boot-screen-title">
+          {dockerAutoRestart ? 'Reiniciando la API…' : 'Reinicio del backend necesario'}
+        </h1>
+        {dockerAutoRestart ? (
+          <>
+            <p>
+              La instalación terminó. El contenedor de la API se está reiniciando para
+              activar login y base de datos.
+            </p>
+            {bootDetail ? <p className="muted">{bootDetail}</p> : null}
+          </>
+        ) : (
+          <>
+            <p>
+              La instalación ya está registrada en el servidor, pero este proceso de la
+              API se inició <strong>antes</strong> de completar el asistente. Los módulos
+              de login y base de datos solo se cargan al <strong>arranque</strong> de Nest.
+            </p>
+            <ol className="muted" style={{ textAlign: 'left', maxWidth: 520 }}>
+              <li>En la terminal del backend, pulsa Ctrl+C para detenerlo.</li>
+              <li>
+                Vuelve a ejecutar <code>npm run start:dev</code> en la carpeta{' '}
+                <code>backend</code>.
+              </li>
+              <li>Pulsa el botón de abajo (o recarga la página).</li>
+            </ol>
+            <p className="muted">
+              Si ya reiniciaste el backend y sigues aquí, comprueba que el puerto del
+              proxy (Vite → API) coincide con el <code>PORT</code> de{' '}
+              <code>backend/.env</code>. También puedes recargar con Ctrl+F5.
+            </p>
+            <p>
+              <button
+                type="button"
+                className="btn-primary"
+                onClick={() => void retryAfterRestart()}
+              >
+                Ya reinicié el backend — comprobar de nuevo
+              </button>
+            </p>
+          </>
+        )}
       </div>
     );
   }

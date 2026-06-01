@@ -37,7 +37,7 @@ wait_for_mysql() {
 }
 
 auto_install_marker() {
-  if [ "${CLUB360_AUTO_INSTALL:-1}" != "1" ]; then
+  if [ "${CLUB360_AUTO_INSTALL:-0}" != "1" ]; then
     return 0
   fi
   if [ -f /app/data/installed.txt ] || [ -f /app/data/.installed ]; then

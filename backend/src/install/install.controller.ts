@@ -22,7 +22,10 @@ export class InstallController {
   @Public()
   @Get('status')
   status() {
-    return { installed: isInstallComplete() };
+    return {
+      installed: isInstallComplete(),
+      dockerAutoRestart: process.env.CLUB360_DOCKER === '1',
+    };
   }
 
   /** Solo durante instalación: comprueba MySQL con credenciales por defecto. */

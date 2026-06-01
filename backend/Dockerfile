@@ -6,10 +6,10 @@ FROM node:20-bookworm-slim AS build
 WORKDIR /app/backend
 
 COPY backend/package.json backend/package-lock.json ./
-RUN npm ci
+RUN npm ci --ignore-scripts
 
 COPY backend/ ./
-RUN npm run build
+RUN npx prisma generate && npm run build
 
 FROM node:20-bookworm-slim AS production
 
@@ -18,7 +18,7 @@ WORKDIR /app
 ENV NODE_ENV=production
 
 COPY backend/package.json backend/package-lock.json ./
-RUN npm ci --omit=dev && npm cache clean --force
+RUN npm ci --omit=dev --ignore-scripts && npm cache clean --force
 
 COPY --from=build /app/backend/dist ./dist
 COPY backend/database ./database
@@ -33,4 +33,4 @@ VOLUME ["/app/data"]
 EXPOSE 3000
 
 ENTRYPOINT ["/docker-entrypoint.sh"]
-CMD ["node", "dist/main.js"]
+CMD ["node", "dist/src/main.js"]

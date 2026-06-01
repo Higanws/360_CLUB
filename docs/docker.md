@@ -6,7 +6,7 @@ Hay dos modos: **solo base de datos** (desarrollo en host) y **stack completo** 
 
 ## Stack completo (recomendado para VPS)
 
-Carpeta [`deploy/`](../deploy/README.md): API + frontend (Nginx) + MariaDB + job de seed + **Portainer** (UI de gestión en el puerto `9000`).
+Carpeta [`deploy/`](../deploy/README.md): API + frontend (Nginx) + MariaDB + **Portainer** (UI de gestión en el puerto `9000`). Esquema y datos demo los aplica el **wizard** en el primer arranque.
 
 ```bash
 cd deploy
