@@ -1,11 +1,11 @@
 # Al publicar un tag v* (ej. v1.0.0), despliega en el VPS vía SSH.
 #
-# Secrets en GitHub → Settings → Secrets → Actions:
-#   VPS_HOST      → 187.33.154.45
-#   VPS_SSH_KEY   → contenido de la clave privada SSH (PEM)
-#   VPS_USER      → root (opcional; default root)
+# Secrets (Settings → Secrets → Actions):
+#   VPS_HOST      → 187.33.154.45  (sin https:// ni espacios)
+#   VPS_SSH_KEY   → clave PRIVADA completa (cloudflare.pem), con saltos de línea
+#   VPS_USER      → root
 #
-# También: Run workflow manual (rama o tag).
+# Pegar clave en Mac: pbcopy < /Users/Personal/Downloads/cloudflare.pem
 
 name: Deploy VPS
 
@@ -23,16 +23,30 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
-      - name: Deploy over SSH
-        uses: appleboy/ssh-action@v1.2.0
+      - name: Configurar SSH
+        uses: webfactory/ssh-agent@v0.9.0
         with:
-          host: ${{ secrets.VPS_HOST }}
-          username: ${{ secrets.VPS_USER || 'root' }}
-          key: ${{ secrets.VPS_SSH_KEY }}
-          script_stop: true
-          script: |
-            set -euo pipefail
-            REF="${{ github.event_name == 'workflow_dispatch' && github.event.inputs.ref || github.ref_name }}"
-            chmod +x /opt/360_CLUB/deploy/vps-deploy.sh
-            /opt/360_CLUB/deploy/vps-deploy.sh "${REF}"
+          ssh-private-key: ${{ secrets.VPS_SSH_KEY }}
+
+      - name: Comprobar conexión
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+        run: |
+          set -euo pipefail
+          USER="${VPS_USER:-root}"
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new \
+            "${USER}@${VPS_HOST}" 'echo "SSH OK en $(hostname)"'
+
+      - name: Desplegar en VPS
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          DEPLOY_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.ref_name }}
+        run: |
+          set -euo pipefail
+          USER="${VPS_USER:-root}"
+          ssh -o BatchMode=yes "${USER}@${VPS_HOST}" \
+            "chmod +x /opt/360_CLUB/deploy/vps-deploy.sh && /opt/360_CLUB/deploy/vps-deploy.sh '${DEPLOY_REF}'"
