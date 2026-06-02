@@ -1,5 +1,7 @@
 import { lazy, Suspense, type ReactNode } from 'react';
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
+import { AuthCatchAll } from './components/auth/AuthCatchAll';
+import { RequireAuthOutlet } from './components/auth/RequireAuthOutlet';
 import { PageLoading } from './components/mm/PageLoading';
 import { routes } from './config/member-management';
 import { MemberManagementLayout } from './layouts/MemberManagementLayout';
@@ -154,17 +156,19 @@ export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
-      <Route path="/home" element={<HomeEntry />} />
-      <Route
-        path="/recepcion/control-acceso"
-        element={
-          <LazyPage>
-            <AccessControlKioskPage />
-          </LazyPage>
-        }
-      />
 
-      <Route path="/socio" element={<MemberPortalLayout />}>
+      <Route element={<RequireAuthOutlet />}>
+        <Route path="/home" element={<HomeEntry />} />
+        <Route
+          path="/recepcion/control-acceso"
+          element={
+            <LazyPage>
+              <AccessControlKioskPage />
+            </LazyPage>
+          }
+        />
+
+        <Route path="/socio" element={<MemberPortalLayout />}>
         <Route index element={<MemberPortalIndex />} />
         <Route path="nutricion-ejercicio" element={<MemberWellnessLayout />}>
           <Route index element={<Navigate to="dieta" replace />} />
@@ -470,11 +474,13 @@ export default function App() {
         </Route>
       </Route>
 
-      <Route
-        path="/members/*"
-        element={<Navigate to={routes.socios} replace />}
-      />
+        <Route
+          path="/members/*"
+          element={<Navigate to={routes.socios} replace />}
+        />
+      </Route>
 
+      <Route path="*" element={<AuthCatchAll />} />
       <Route path="/" element={<Navigate to="/login" replace />} />
     </Routes>
   );

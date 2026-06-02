@@ -1,6 +1,6 @@
 import axios from 'axios';
 import { useEffect, useState, type FormEvent } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { ThemeToggle } from '../components/ThemeToggle';
 import { api } from '../lib/api';
 import { extractApiMessage } from '../lib/extract-api-message';
@@ -14,9 +14,23 @@ type Branding = {
   header_color: string;
 };
 
+function loginRedirectTarget(from: unknown): string {
+  if (typeof from !== 'string' || !from.startsWith('/') || from.startsWith('//')) {
+    return '/home';
+  }
+  if (from === '/login' || from.startsWith('/login?')) {
+    return '/home';
+  }
+  return from;
+}
+
 export function LoginPage() {
   const { login, user, loading: authLoading } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const redirectAfterLogin = loginRedirectTarget(
+    (location.state as { from?: string } | null)?.from,
+  );
   const [branding, setBranding] = useState<Branding | null>(null);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -40,9 +54,9 @@ export function LoginPage() {
 
   useEffect(() => {
     if (!authLoading && user) {
-      navigate('/home', { replace: true });
+      navigate(redirectAfterLogin, { replace: true });
     }
-  }, [authLoading, user, navigate]);
+  }, [authLoading, user, navigate, redirectAfterLogin]);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -50,7 +64,7 @@ export function LoginPage() {
     setBusy(true);
     try {
       await login(username.trim(), password);
-      navigate('/home', { replace: true });
+      navigate(redirectAfterLogin, { replace: true });
     } catch (err: unknown) {
       if (axios.isAxiosError(err) && err.response?.status === 404) {
         setError(

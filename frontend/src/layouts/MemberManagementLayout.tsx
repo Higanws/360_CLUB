@@ -1,5 +1,5 @@
 import { useEffect, useId, useMemo, useState } from 'react';
-import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { Navigate, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { ThemeToggle } from '../components/ThemeToggle';
 import {
   featureSocios,
@@ -147,8 +147,19 @@ export function MemberManagementLayout() {
     );
   }
 
-  if (!user || !isBusiness) {
-    return null;
+  if (!user) {
+    const from = location.pathname + location.search;
+    return (
+      <Navigate
+        to="/login"
+        replace
+        state={from && from !== '/login' ? { from } : undefined}
+      />
+    );
+  }
+
+  if (!isBusiness) {
+    return <Navigate to={memberPortalRoutes.wellness} replace />;
   }
 
   return (

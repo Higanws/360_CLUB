@@ -1,6 +1,6 @@
 import axios from 'axios';
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, Navigate, useNavigate } from 'react-router-dom';
 import {
   Area,
   AreaChart,
@@ -107,12 +107,16 @@ export function DashboardPage() {
     [salesChartData],
   );
 
-  if (loading || !user) {
+  if (loading) {
     return (
       <div className="mm-page">
         <p className="muted">Cargando…</p>
       </div>
     );
+  }
+
+  if (!user) {
+    return <Navigate to="/login" replace />;
   }
 
   return (
