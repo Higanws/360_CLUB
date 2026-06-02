@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { useEffect, useMemo, useState } from 'react';
-import { Link, Navigate, useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
+import { RedirectToLogin } from '../../components/auth/RedirectToLogin';
 import {
   Area,
   AreaChart,
@@ -59,10 +60,6 @@ export function DashboardPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!loading && !user) navigate('/login', { replace: true });
-  }, [loading, user, navigate]);
-
-  useEffect(() => {
     if (!user) return;
     const r = user.role_name?.trim().toLowerCase() ?? '';
     if (r === 'member') {
@@ -116,7 +113,7 @@ export function DashboardPage() {
   }
 
   if (!user) {
-    return <Navigate to="/login" replace />;
+    return <RedirectToLogin />;
   }
 
   return (

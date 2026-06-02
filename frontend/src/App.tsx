@@ -1,5 +1,6 @@
 import { lazy, Suspense, type ReactNode } from 'react';
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
+import { AppRootRedirect } from './components/auth/AppRootRedirect';
 import { AuthCatchAll } from './components/auth/AuthCatchAll';
 import { RequireAuthOutlet } from './components/auth/RequireAuthOutlet';
 import { PageLoading } from './components/mm/PageLoading';
@@ -480,8 +481,8 @@ export default function App() {
         />
       </Route>
 
+      <Route path="/" element={<AppRootRedirect />} />
       <Route path="*" element={<AuthCatchAll />} />
-      <Route path="/" element={<Navigate to="/login" replace />} />
     </Routes>
   );
 }

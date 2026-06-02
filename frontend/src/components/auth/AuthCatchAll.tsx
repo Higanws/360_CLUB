@@ -1,29 +1,19 @@
-import { Navigate, useLocation } from 'react-router-dom';
+import { Navigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import { AuthLoadingScreen } from './AuthLoadingScreen';
+import { RedirectToLogin } from './RedirectToLogin';
 
-/** Rutas desconocidas: con sesión → home; sin sesión → login. */
+/** Rutas desconocidas: con sesión → home; sin sesión → login con URL de retorno. */
 export function AuthCatchAll() {
   const { user, loading } = useAuth();
-  const location = useLocation();
 
   if (loading) {
-    return (
-      <div className="boot-screen" role="status" aria-live="polite">
-        <p className="muted">Cargando…</p>
-      </div>
-    );
+    return <AuthLoadingScreen />;
   }
 
   if (user) {
     return <Navigate to="/home" replace />;
   }
 
-  const from = location.pathname + location.search;
-  return (
-    <Navigate
-      to="/login"
-      replace
-      state={from && from !== '/login' ? { from } : undefined}
-    />
-  );
+  return <RedirectToLogin />;
 }

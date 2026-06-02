@@ -1,5 +1,6 @@
 import { useEffect, useId, useMemo, useState } from 'react';
 import { Navigate, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { RedirectToLogin } from '../components/auth/RedirectToLogin';
 import { ThemeToggle } from '../components/ThemeToggle';
 import {
   featureSocios,
@@ -126,10 +127,7 @@ export function MemberManagementLayout() {
 
   useEffect(() => {
     if (loading) return;
-    if (!user) {
-      navigate('/login', { replace: true });
-      return;
-    }
+    if (!user) return;
     if (!isBusiness) {
       navigate(memberPortalRoutes.wellness, { replace: true });
       return;
@@ -148,14 +146,7 @@ export function MemberManagementLayout() {
   }
 
   if (!user) {
-    const from = location.pathname + location.search;
-    return (
-      <Navigate
-        to="/login"
-        replace
-        state={from && from !== '/login' ? { from } : undefined}
-      />
-    );
+    return <RedirectToLogin />;
   }
 
   if (!isBusiness) {

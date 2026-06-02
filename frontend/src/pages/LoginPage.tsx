@@ -5,6 +5,7 @@ import { ThemeToggle } from '../components/ThemeToggle';
 import { api } from '../lib/api';
 import { extractApiMessage } from '../lib/extract-api-message';
 import { useAuth } from '../context/AuthContext';
+import { resolvePostLoginPath } from '../lib/auth-routes';
 
 type Branding = {
   name: string;
@@ -14,21 +15,11 @@ type Branding = {
   header_color: string;
 };
 
-function loginRedirectTarget(from: unknown): string {
-  if (typeof from !== 'string' || !from.startsWith('/') || from.startsWith('//')) {
-    return '/home';
-  }
-  if (from === '/login' || from.startsWith('/login?')) {
-    return '/home';
-  }
-  return from;
-}
-
 export function LoginPage() {
   const { login, user, loading: authLoading } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const redirectAfterLogin = loginRedirectTarget(
+  const redirectAfterLogin = resolvePostLoginPath(
     (location.state as { from?: string } | null)?.from,
   );
   const [branding, setBranding] = useState<Branding | null>(null);

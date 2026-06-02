@@ -1,5 +1,7 @@
 import { useEffect } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { AuthLoadingScreen } from '../../components/auth/AuthLoadingScreen';
+import { RedirectToLogin } from '../../components/auth/RedirectToLogin';
 import { ThemeToggle } from '../../components/ThemeToggle';
 import { memberPortalRoutes } from '../../config/member-portal';
 import { routes } from '../../config/member-management';
@@ -14,12 +16,6 @@ export function MemberPortalLayout() {
   const [searchParams] = useSearchParams();
 
   useEffect(() => {
-    if (!loading && !user) {
-      navigate('/login', { replace: true });
-    }
-  }, [loading, user, navigate]);
-
-  useEffect(() => {
     if (!user) return;
     if (
       user.role_name?.trim().toLowerCase() !== 'member' &&
@@ -29,12 +25,12 @@ export function MemberPortalLayout() {
     }
   }, [user, navigate]);
 
-  if (loading || !user) {
-    return (
-      <div className="home-shell">
-        <p className="muted">Cargando…</p>
-      </div>
-    );
+  if (loading) {
+    return <AuthLoadingScreen />;
+  }
+
+  if (!user) {
+    return <RedirectToLogin />;
   }
 
   const wellnessPath = memberPortalRoutes.wellness;
