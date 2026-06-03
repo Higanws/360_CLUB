@@ -1,0 +1,17 @@
+# Cloudflare Tunnel — ejemplo para VPS (/etc/cloudflared/config.yml)
+#
+# 1. Copiar a /etc/cloudflared/config.yml (ajustar tunnel id y credentials-file)
+# 2. cloudflared tunnel route dns <NOMBRE_TUNEL> mcp.unogym.online
+# 3. systemctl restart cloudflared
+#
+# El MCP escucha solo en 127.0.0.1:3100 (Docker); cloudflared hace de proxy HTTPS.
+
+tunnel: 53dc6e9c-bb2c-49c6-91c9-0a8e635a6e3d
+credentials-file: /etc/cloudflared/53dc6e9c-bb2c-49c6-91c9-0a8e635a6e3d.json
+
+ingress:
+  - hostname: app.unogym.online
+    service: http://127.0.0.1:8080
+  - hostname: mcp.unogym.online
+    service: http://127.0.0.1:3100
+  - service: http_status:404

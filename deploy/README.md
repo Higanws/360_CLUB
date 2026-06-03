@@ -65,3 +65,7 @@ Documentación ampliada: [docs/docker.md](../docs/docker.md).
 ## Releases y VPS (tags Git)
 
 Cada tag `v*` (ej. `v1.0.0`) puede desplegar automáticamente en el VPS vía GitHub Actions. Ver [docs/versionado.md](../docs/versionado.md) y el script `deploy/vps-deploy.sh`.
+
+## MCP + Cloudflare (`mcp.unogym.online`)
+
+Agentes remotos (Telegram, etc.): [docs/mcp-server.md](../docs/mcp-server.md). Plantilla túnel: `cloudflared-config.example.yml`, script `setup-cloudflare-mcp.sh`.

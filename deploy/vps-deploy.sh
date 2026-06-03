@@ -22,7 +22,11 @@ echo "${REF}" > "${REPO_DIR}/VERSION"
 echo "$(git rev-parse --short HEAD)" >> "${REPO_DIR}/VERSION"
 
 cd "${COMPOSE_DIR}"
-docker compose up -d --build web api
+docker compose up -d --build web api mcp
 
 echo "Desplegado ${REF} ($(head -1 "${REPO_DIR}/VERSION" | tr -d '\n')) en $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 docker compose ps
+
+if [[ -x "${COMPOSE_DIR}/setup-cloudflare-mcp.sh" ]]; then
+  echo "Cloudflare MCP: ejecutá ${COMPOSE_DIR}/setup-cloudflare-mcp.sh si aún no configuraste mcp.unogym.online"
+fi

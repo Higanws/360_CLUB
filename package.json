@@ -12,6 +12,9 @@
     "build": "npm run build --prefix backend && npm run build --prefix frontend",
     "test": "npm run test --prefix backend && npm run test --prefix frontend",
     "test:infra": "npm run test:infra --prefix backend && npm run test:infra --prefix frontend",
-    "test:modules": "npm run test:modules --prefix backend && npm run test:modules --prefix frontend"
+    "test:modules": "npm run test:modules --prefix backend && npm run test:modules --prefix frontend",
+    "mcp": "npm run dev --prefix mcp-server",
+    "mcp:build": "npm run build --prefix mcp-server",
+    "mcp:test": "npm test --prefix mcp-server"
   }
 }

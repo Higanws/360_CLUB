@@ -260,6 +260,79 @@ export class MembersService {
     };
   }
 
+  async searchForUser(payload: {
+    userId: number;
+    role_name: string;
+    q: string;
+    limit: number;
+  }): Promise<{ members: MembersListRow[]; total: number }> {
+    const role = normalizeClubRole(payload.role_name);
+    if (role === 'member') {
+      throw new ForbiddenException(
+        'Los socios no tienen acceso al módulo de gestión. Contacta con recepción.',
+      );
+    }
+    this.assertBusinessRole(payload.role_name);
+
+    const q = payload.q.trim();
+    if (!q) {
+      return { members: [], total: 0 };
+    }
+
+    const limit = Math.min(50, Math.max(1, Math.floor(payload.limit) || 20));
+    const uid = payload.userId;
+    const like = `%${q.replace(/[%_\\]/g, '\\$&')}%`;
+
+    const qb = this.members
+      .createQueryBuilder('m')
+      .select([
+        'm.id',
+        'm.activated',
+        'm.member_id',
+        'm.first_name',
+        'm.last_name',
+        'm.image',
+        'm.username',
+        'm.di_dni_number',
+        'm.membership_status',
+        'm.membership_valid_from',
+        'm.membership_valid_to',
+      ])
+      .where('LOWER(TRIM(m.role_name)) = :memberRole', { memberRole: 'member' })
+      .andWhere(
+        `(LOWER(CONCAT(COALESCE(m.first_name,''), ' ', COALESCE(m.last_name,''))) LIKE LOWER(:like)
+          OR LOWER(COALESCE(m.username,'')) LIKE LOWER(:like)
+          OR LOWER(COALESCE(m.di_dni_number,'')) LIKE LOWER(:like)
+          OR LOWER(COALESCE(m.member_id,'')) LIKE LOWER(:like))`,
+        { like },
+      );
+
+    if (role === 'staff_member') {
+      qb.andWhere('m.assign_staff_mem = :uid', { uid });
+    }
+
+    const total = await qb.clone().getCount();
+    const rows = await qb
+      .orderBy('m.first_name', 'ASC')
+      .addOrderBy('m.last_name', 'ASC')
+      .take(limit)
+      .getMany();
+
+    const members: MembersListRow[] = rows.map((r) => ({
+      id: r.id,
+      activated: r.activated,
+      member_id: r.member_id,
+      first_name: r.first_name,
+      last_name: r.last_name,
+      image: r.image,
+      membership_status: r.membership_status,
+      membership_valid_from: toIsoDateOnly(r.membership_valid_from),
+      membership_valid_to: toIsoDateOnly(r.membership_valid_to),
+    }));
+
+    return { members, total };
+  }
+
   async listForUser(payload: {
     userId: number;
     role_name: string;
