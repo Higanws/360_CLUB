@@ -10,6 +10,14 @@ import { PosProduct } from '../entities/pos-product.entity';
 import { PosSale } from '../entities/pos-sale.entity';
 import { PosSaleLine } from '../entities/pos-sale-line.entity';
 import { CreatePosSaleDto } from './dto/create-sale.dto';
+import {
+  buildPageMeta,
+  paginationSkip,
+  type PaginatedMeta,
+} from '../shared/dto/paginated-meta';
+import { DashboardCacheService } from '../shared/cache/dashboard-cache.service';
+
+const MAX_SALES_RANGE_DAYS = 90;
 
 function escapeCsv(s: string): string {
   if (s.includes(';') || s.includes('"') || s.includes('\n') || s.includes('\r')) {
@@ -29,7 +37,10 @@ export type PosSaleRow = {
 
 @Injectable()
 export class PosSalesService {
-  constructor(@InjectDataSource() private readonly dataSource: DataSource) {}
+  constructor(
+    @InjectDataSource() private readonly dataSource: DataSource,
+    private readonly dashboardCache: DashboardCacheService,
+  ) {}
 
   private parseDateRange(fromStr: string, toStr: string): { start: Date; end: Date } {
     if (!fromStr?.trim() || !toStr?.trim()) {
@@ -45,12 +56,18 @@ export class PosSalesService {
         'La fecha «desde» debe ser anterior o igual a «hasta».',
       );
     }
+    const spanDays =
+      (end.getTime() - start.getTime()) / (24 * 60 * 60 * 1000);
+    if (spanDays > MAX_SALES_RANGE_DAYS) {
+      throw new BadRequestException(
+        `El rango no puede superar ${MAX_SALES_RANGE_DAYS} días.`,
+      );
+    }
     return { start, end };
   }
 
-  async listSales(fromStr: string, toStr: string): Promise<PosSaleRow[]> {
-    const { start, end } = this.parseDateRange(fromStr, toStr);
-    const raw = await this.dataSource
+  private salesQueryBuilder(start: Date, end: Date) {
+    return this.dataSource
       .getRepository(PosSale)
       .createQueryBuilder('s')
       .select('s.id', 'id')
@@ -62,9 +79,12 @@ export class PosSalesService {
       .leftJoin(GymMember, 'm', 'm.id = s.created_by')
       .where('s.created_at >= :start', { start })
       .andWhere('s.created_at <= :end', { end })
-      .orderBy('s.created_at', 'DESC')
-      .getRawMany();
+      .orderBy('s.created_at', 'DESC');
+  }
 
+  private mapSaleRows(
+    raw: Array<Record<string, unknown>>,
+  ): PosSaleRow[] {
     return raw.map((r) => ({
       id: Number(r.id),
       total_amount: Number(r.total_amount),
@@ -79,9 +99,37 @@ export class PosSalesService {
     }));
   }
 
+  async listSales(
+    fromStr: string,
+    toStr: string,
+    page = 1,
+    pageSize = 25,
+  ): Promise<{ sales: PosSaleRow[]; meta: PaginatedMeta }> {
+    const { start, end } = this.parseDateRange(fromStr, toStr);
+    const ps = Math.min(100, Math.max(1, pageSize));
+    const pg = Math.max(1, page);
+    const base = this.salesQueryBuilder(start, end);
+    const total = await base.clone().getCount();
+    const raw = await base
+      .offset(paginationSkip(pg, ps))
+      .limit(ps)
+      .getRawMany();
+    return {
+      sales: this.mapSaleRows(raw),
+      meta: buildPageMeta(total, pg, ps),
+    };
+  }
+
+  /** Compat: export CSV usa listado completo del rango (máx. 90 días). */
+  async listSalesAll(fromStr: string, toStr: string): Promise<PosSaleRow[]> {
+    const { start, end } = this.parseDateRange(fromStr, toStr);
+    const raw = await this.salesQueryBuilder(start, end).getRawMany();
+    return this.mapSaleRows(raw);
+  }
+
   /** CSV con cabecera UTF-8 (BOM añadida en el controlador). */
   async exportSalesCsv(fromStr: string, toStr: string): Promise<string> {
-    const rows = await this.listSales(fromStr, toStr);
+    const rows = await this.listSalesAll(fromStr, toStr);
     const header =
       'id;fecha_iso;total;metodo_pago;vendedor_user_id;vendedor_usuario';
     const lines = rows.map((r) =>
@@ -112,7 +160,7 @@ export class PosSalesService {
       qty,
     }));
 
-    return this.dataSource.transaction(async (manager) => {
+    const result = await this.dataSource.transaction(async (manager) => {
       const prodRepo = manager.getRepository(PosProduct);
       const saleRepo = manager.getRepository(PosSale);
       const lineRepo = manager.getRepository(PosSaleLine);
@@ -171,7 +219,9 @@ export class PosSalesService {
         await lineRepo.save(line);
       }
 
-      return { ok: true, sale_id: sale.id, total_amount: total };
+      return { ok: true as const, sale_id: sale.id, total_amount: total };
     });
+    await this.dashboardCache.invalidateBusinessMetrics();
+    return result;
   }
 }

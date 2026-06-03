@@ -7,12 +7,14 @@ import {
   useParams,
   useSearchParams,
 } from 'react-router-dom';
+import { MmCombobox } from '../../components/ui/MmCombobox';
 import { MmDatePicker } from '../../components/ui/MmDatePicker';
 import { MmSelect } from '../../components/ui/MmSelect';
 import { routes } from '../../config/member-management';
 import { memberPortalRoutes } from '../../config/member-portal';
 import { api } from '../../lib/api';
-import { fetchAllMembersLiteRows } from '../../lib/members-api';
+import { searchMembersLite } from '../../lib/members-api';
+import { useDebouncedValue } from '../../hooks/useDebouncedValue';
 import { extractApiMessage } from '../../lib/extract-api-message';
 import {
   emptyMealLine,
@@ -52,6 +54,8 @@ export function NutritionPlanPage() {
   const [membersOptions, setMembersOptions] = useState<
     Array<{ id: number; first_name: string | null; last_name: string | null }>
   >([]);
+  const [memberSearch, setMemberSearch] = useState('');
+  const debouncedMemberSearch = useDebouncedValue(memberSearch, 300);
   const [selectedMemberId, setSelectedMemberId] = useState<number | null>(null);
   const [titleName, setTitleName] = useState('');
   const [validFrom, setValidFrom] = useState('');
@@ -74,7 +78,7 @@ export function NutritionPlanPage() {
     [mealLines],
   );
 
-  const memberSelectOptions = useMemo(
+  const memberComboboxOptions = useMemo(
     () =>
       membersOptions.map((m) => ({
         value: String(m.id),
@@ -139,11 +143,24 @@ export function NutritionPlanPage() {
   }, [user, navigate]);
 
   useEffect(() => {
-    if (!user) return;
-    fetchAllMembersLiteRows(200)
-      .then((rows) => setMembersOptions(rows))
-      .catch(() => setMembersOptions([]));
-  }, [user]);
+    if (!user || !isCreateRoute) return;
+    const q = debouncedMemberSearch.trim();
+    if (q.length < 2) {
+      setMembersOptions([]);
+      return;
+    }
+    let cancelled = false;
+    searchMembersLite(q, 20)
+      .then((rows) => {
+        if (!cancelled) setMembersOptions(rows);
+      })
+      .catch(() => {
+        if (!cancelled) setMembersOptions([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [user, isCreateRoute, debouncedMemberSearch]);
 
   useEffect(() => {
     if (!isCreateRoute && memberIdParam) {
@@ -359,12 +376,18 @@ export function NutritionPlanPage() {
             <div className="member-form-grid">
               <label className="member-form-span2">
                 Miembro (la dieta es exclusiva de un solo socio)
-                <MmSelect
-                  value={selectedMemberId != null ? String(selectedMemberId) : ''}
-                  onValueChange={onMemberChange}
-                  options={memberSelectOptions}
-                  placeholder="— Seleccionar socio —"
-                  required={isCreateRoute}
+                <MmCombobox
+                  query={memberSearch}
+                  onQueryChange={setMemberSearch}
+                  options={memberComboboxOptions}
+                  onSelect={(v) => onMemberChange(v)}
+                  placeholder="Buscar socio (mín. 2 caracteres)…"
+                  emptyMessage={
+                    memberSearch.trim().length < 2
+                      ? 'Escribe al menos 2 caracteres.'
+                      : 'Ningún socio coincide.'
+                  }
+                  aria-label="Buscar socio"
                 />
               </label>
             </div>

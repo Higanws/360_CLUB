@@ -67,7 +67,9 @@ export function ActivityFormPage({ mode }: { mode: Mode }) {
       .then(({ data }) => setCategories(data))
       .catch(() => setCategories([]));
     api
-      .get<{ staff: StaffRow[] }>('/staff')
+      .get<{ staff: StaffRow[]; meta?: unknown }>('/staff', {
+        params: { page: 1, pageSize: 500 },
+      })
       .then(({ data }) => setStaffList(data.staff ?? []))
       .catch(() => setStaffList([]));
   }, [user, navigate]);

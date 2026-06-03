@@ -167,7 +167,8 @@ CREATE TABLE IF NOT EXISTS `membership_payment` (
   `created_by` int DEFAULT NULL,
   PRIMARY KEY (`mp_id`),
   KEY `idx_membership_payment_member` (`member_id`),
-  KEY `idx_membership_payment_plan` (`membership_id`)
+  KEY `idx_membership_payment_plan` (`membership_id`),
+  KEY `idx_membership_payment_end_date` (`end_date`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `pos_product` (
@@ -339,6 +340,7 @@ CREATE TABLE IF NOT EXISTS `club_access_log` (
   PRIMARY KEY (`id`),
   KEY `idx_cal_member_date` (`member_id`, `access_date`),
   KEY `idx_cal_staff` (`staff_actor_id`),
+  KEY `idx_club_access_log_date_outcome` (`access_date`, `outcome`),
   CONSTRAINT `fk_cal_member` FOREIGN KEY (`member_id`) REFERENCES `gym_member` (`id`) ON DELETE SET NULL,
   CONSTRAINT `fk_cal_staff` FOREIGN KEY (`staff_actor_id`) REFERENCES `gym_member` (`id`) ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

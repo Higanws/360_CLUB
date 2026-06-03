@@ -20,6 +20,7 @@ import { CreatePosProductDto } from './dto/create-product.dto';
 import { CreatePosSaleDto } from './dto/create-sale.dto';
 import { UpdatePosProductDto } from './dto/update-product.dto';
 import { UpdatePosStockDto } from './dto/update-stock.dto';
+import { PosSalesListQueryDto } from './dto/pos-sales-list-query.dto';
 import { PosProductsService } from './pos-products.service';
 import { PosSalesService } from './pos-sales.service';
 
@@ -69,8 +70,13 @@ export class PosController {
   }
 
   @Get('sales')
-  listSales(@Query('from') from: string, @Query('to') to: string) {
-    return this.sales.listSales(from, to);
+  listSales(@Query() q: PosSalesListQueryDto) {
+    return this.sales.listSales(
+      q.from,
+      q.to,
+      q.page ?? 1,
+      q.pageSize ?? 25,
+    );
   }
 
   @Get('sales/export')

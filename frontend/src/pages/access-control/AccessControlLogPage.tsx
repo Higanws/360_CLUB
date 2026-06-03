@@ -1,9 +1,14 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { bindDateRange } from '../../lib/date-range';
 import { Link, useNavigate } from 'react-router-dom';
 import { MmDatePicker } from '../../components/ui/MmDatePicker';
+import { MmSelect } from '../../components/ui/MmSelect';
 import { routes } from '../../config/member-management';
-import { api } from '../../lib/api';
+import {
+  DEFAULT_PAGE_SIZE,
+  pageRangeLabel,
+} from '../../lib/pagination';
+import { useAccessLogsList } from '../../lib/queries/lists';
 import { useAuth } from '../../context/AuthContext';
 import { memberPortalRoutes } from '../../config/member-portal';
 import {
@@ -16,49 +21,54 @@ import {
 export function AccessControlLogPage() {
   const { user, loading } = useAuth();
   const navigate = useNavigate();
-  const [from, setFrom] = useState(firstDayOfMonthYmd);
+  const [from, setFrom] = useState(() => firstDayOfMonthYmd());
   const [to, setTo] = useState(() => localYmd(new Date()));
-  const [rows, setRows] = useState<AccessLogRow[]>([]);
+  const [applied, setApplied] = useState(() => ({
+    from: firstDayOfMonthYmd(),
+    to: localYmd(new Date()),
+  }));
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+
+  const enabled = !!user;
+  const { data, isFetching, isError } = useAccessLogsList(
+    applied.from,
+    applied.to,
+    page,
+    pageSize,
+    enabled,
+  );
+
+  const rows = (data?.logs ?? []) as AccessLogRow[];
+  const meta = data?.meta ?? null;
 
   const filterRange = useMemo(
     () => bindDateRange(from, to, setFrom, setTo),
     [from, to],
   );
 
-  const load = useCallback(() => {
-    setBusy(true);
-    setError(null);
-    const q = new URLSearchParams({
-      limit: '500',
-      from,
-      to,
-    });
-    api
-      .get<AccessLogRow[]>(`/access-control/recent?${q.toString()}`)
-      .then(({ data }) => setRows(data))
-      .catch(() => setError('No se pudo cargar el registro de accesos.'))
-      .finally(() => setBusy(false));
-  }, [from, to]);
-
   useEffect(() => {
-    if (!loading && !user) {
-      navigate('/login', { replace: true });
-    }
+    if (!loading && !user) navigate('/login', { replace: true });
   }, [loading, user, navigate]);
 
   useEffect(() => {
     if (!user) return;
     const r = user.role_name?.trim().toLowerCase() ?? '';
-    if (r === 'member') {
-      navigate(memberPortalRoutes.wellness, { replace: true });
-      return;
-    }
-    load();
-    // Solo carga inicial; el rango se aplica con «Aplicar filtros».
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    if (r === 'member') navigate(memberPortalRoutes.wellness, { replace: true });
   }, [user, navigate]);
+
+  useEffect(() => {
+    if (isError) setError('No se pudo cargar el registro de accesos.');
+    else setError(null);
+  }, [isError]);
+
+  function applyFilters() {
+    setApplied({ from, to });
+    setPage(1);
+  }
+
+  const showPager = meta && meta.pageCount > 1;
 
   if (loading || !user) {
     return (
@@ -91,7 +101,7 @@ export function AccessControlLogPage() {
             className="mm-data-panel__toolbar access-control-filters mm-filter-toolbar"
             onSubmit={(e) => {
               e.preventDefault();
-              load();
+              applyFilters();
             }}
           >
             <label>
@@ -100,7 +110,7 @@ export function AccessControlLogPage() {
                 value={filterRange.desde}
                 onChange={filterRange.onDesdeChange}
                 max={filterRange.maxDesde}
-                disabled={busy}
+                disabled={isFetching}
                 aria-label="Filtro desde"
               />
             </label>
@@ -110,64 +120,116 @@ export function AccessControlLogPage() {
                 value={filterRange.hasta}
                 onChange={filterRange.onHastaChange}
                 min={filterRange.minHasta}
-                disabled={busy}
+                disabled={isFetching}
                 aria-label="Filtro hasta"
               />
             </label>
-            <button type="submit" className="btn-primary" disabled={busy}>
-              {busy ? 'Cargando…' : 'Aplicar filtros'}
+            <button type="submit" className="btn-primary" disabled={isFetching}>
+              {isFetching ? 'Cargando…' : 'Aplicar filtros'}
             </button>
           </form>
 
           {error ? <p className="login-error">{error}</p> : null}
 
+          {meta ? (
+            <p className="muted small" style={{ margin: '0 0 0.75rem' }}>
+              {pageRangeLabel(meta)}
+            </p>
+          ) : null}
+
+          {showPager ? (
+            <div className="members-toolbar members-pagination-toolbar">
+              <div className="members-pagination">
+                <button
+                  type="button"
+                  className="btn-outline"
+                  disabled={page <= 1 || isFetching}
+                  onClick={() => setPage((p) => p - 1)}
+                >
+                  Anterior
+                </button>
+                <span className="muted small members-pagination-status">
+                  Página {meta!.page} de {meta!.pageCount}
+                </span>
+                <button
+                  type="button"
+                  className="btn-outline"
+                  disabled={page >= meta!.pageCount || isFetching}
+                  onClick={() => setPage((p) => p + 1)}
+                >
+                  Siguiente
+                </button>
+              </div>
+              <label className="members-page-size">
+                <span className="muted small">Por página</span>
+                <MmSelect
+                  value={String(pageSize)}
+                  disabled={isFetching}
+                  onValueChange={(v) => {
+                    setPageSize(Number(v));
+                    setPage(1);
+                  }}
+                  options={[
+                    { value: '25', label: '25' },
+                    { value: '50', label: '50' },
+                    { value: '100', label: '100' },
+                  ]}
+                />
+              </label>
+            </div>
+          ) : null}
+
           <div className="mm-data-panel__body">
-          <div className="members-table-wrap">
-            <table className="members-table members-table--centered">
-              <thead>
-                <tr>
-                  <th>Hora</th>
-                  <th>Día</th>
-                  <th>Búsqueda</th>
-                  <th>Socio</th>
-                  <th>Resultado</th>
-                  <th>Recepción</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.length === 0 ? (
-                  <tr className="mm-table-empty">
-                    <td colSpan={6}>No hay registros en este rango.</td>
+            <div className="members-table-wrap">
+              <table className="members-table members-table--centered">
+                <thead>
+                  <tr>
+                    <th>Hora</th>
+                    <th>Día</th>
+                    <th>Búsqueda</th>
+                    <th>Socio</th>
+                    <th>Resultado</th>
+                    <th>Recepción</th>
                   </tr>
-                ) : (
-                  rows.map((row) => (
-                    <tr key={row.id}>
-                      <td>{new Date(row.access_at).toLocaleString('es-ES')}</td>
-                      <td>{row.access_date}</td>
-                      <td>{row.lookup_raw ?? '—'}</td>
-                      <td>
-                        {row.member_id != null ? (
-                          <Link to={routes.sociosDetail(row.member_id)}>
-                            {[row.first_name, row.last_name]
-                              .filter(Boolean)
-                              .join(' ') || `#${row.member_id}`}
-                          </Link>
-                        ) : (
-                          '—'
-                        )}
-                      </td>
-                      <td>{outcomeLabel(row.outcome)}</td>
-                      <td>
-                        {[row.staff_first_name, row.staff_last_name]
-                          .filter(Boolean)
-                          .join(' ') || '—'}
+                </thead>
+                <tbody>
+                  {rows.length === 0 ? (
+                    <tr className="mm-table-empty">
+                      <td colSpan={6}>
+                        {isFetching
+                          ? 'Cargando…'
+                          : 'No hay registros en este rango.'}
                       </td>
                     </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
+                  ) : (
+                    rows.map((row) => (
+                      <tr key={row.id}>
+                        <td>{new Date(row.access_at).toLocaleString('es-ES')}</td>
+                        <td>{row.access_date}</td>
+                        <td>{row.lookup_raw ?? '—'}</td>
+                        <td>
+                          {row.member_id != null ? (
+                            <Link to={routes.sociosDetail(row.member_id)}>
+                              {[row.first_name, row.last_name]
+                                .filter(Boolean)
+                                .join(' ') || `#${row.member_id}`}
+                            </Link>
+                          ) : (
+                            '—'
+                          )}
+                        </td>
+                        <td>{outcomeLabel(row.outcome)}</td>
+                        <td>
+                          {[row.staff_first_name, row.staff_last_name]
+                            .filter(Boolean)
+                            .join(' ') || '—'}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
         </section>
       </div>

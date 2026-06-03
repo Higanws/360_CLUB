@@ -1,12 +1,17 @@
-import axios from 'axios';
-import { useEffect, useMemo, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { MmSearchField } from '../../components/ui/MmSearchField';
+import { MmSelect } from '../../components/ui/MmSelect';
 import { routes } from '../../config/member-management';
 import { memberPortalRoutes } from '../../config/member-portal';
 import { api } from '../../lib/api';
 import { activityDifficultyLabel } from '../../lib/activity-difficulty';
 import { MmTableActions } from '../../components/mm/MmTableActions';
+import {
+  DEFAULT_PAGE_SIZE,
+  pageRangeLabel,
+} from '../../lib/pagination';
+import { useActivitiesList } from '../../lib/queries/lists';
 import { useAuth } from '../../context/AuthContext';
 
 type Row = {
@@ -20,15 +25,17 @@ type Row = {
   video_count: number;
 };
 
-const PAGE_SIZE = 10;
-
 export function ActivitiesListPage() {
   const { user, loading } = useAuth();
   const navigate = useNavigate();
-  const [rows, setRows] = useState<Row[]>([]);
+  const queryClient = useQueryClient();
   const [error, setError] = useState<string | null>(null);
-  const [search, setSearch] = useState('');
-  const [page, setPage] = useState(0);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
+
+  const { data, isLoading, isError } = useActivitiesList(page, pageSize);
+  const rows = (data?.activities ?? []) as Row[];
+  const meta = data?.meta;
 
   useEffect(() => {
     if (!loading && !user) navigate('/login', { replace: true });
@@ -37,55 +44,26 @@ export function ActivitiesListPage() {
   useEffect(() => {
     if (!user) return;
     const r = user.role_name?.trim().toLowerCase() ?? '';
-    if (r === 'member') {
-      navigate(memberPortalRoutes.wellness, { replace: true });
-      return;
-    }
-    api
-      .get<Row[]>('/activities')
-      .then(({ data }) => {
-        setRows(data);
-        setError(null);
-      })
-      .catch((e: unknown) => {
-        if (axios.isAxiosError(e) && e.response?.status === 403) {
-          navigate(memberPortalRoutes.wellness, { replace: true });
-          return;
-        }
-        setError('No se pudo cargar la lista de ejercicios.');
-      });
+    if (r === 'member') navigate(memberPortalRoutes.wellness, { replace: true });
   }, [user, navigate]);
 
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return rows;
-    return rows.filter(
-      (r) =>
-        r.title.toLowerCase().includes(q) ||
-        r.category_name.toLowerCase().includes(q) ||
-        activityDifficultyLabel(r.difficulty_level).toLowerCase().includes(q) ||
-        r.trainer_names.some((n) => n.toLowerCase().includes(q)),
-    );
-  }, [rows, search]);
-
-  const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const pageSafe = Math.min(page, pageCount - 1);
-  const slice = filtered.slice(
-    pageSafe * PAGE_SIZE,
-    pageSafe * PAGE_SIZE + PAGE_SIZE,
-  );
+  useEffect(() => {
+    if (isError) setError('No se pudo cargar la lista de ejercicios.');
+    else setError(null);
+  }, [isError]);
 
   async function handleDelete(id: number) {
     if (!confirm('¿Eliminar este ejercicio?')) return;
     try {
       await api.delete(`/activities/${id}`);
-      const { data } = await api.get<Row[]>('/activities');
-      setRows(data);
+      await queryClient.invalidateQueries({ queryKey: ['activities', 'list'] });
       setError(null);
     } catch {
-        setError('No se pudo eliminar el ejercicio.');
+      setError('No se pudo eliminar el ejercicio.');
     }
   }
+
+  const showPager = meta && meta.pageCount > 1;
 
   if (loading || !user) {
     return (
@@ -99,72 +77,95 @@ export function ActivitiesListPage() {
     <div className="mm-page">
       <header className="mm-page-head">
         <div>
-          <h1>Lista de ejercicios</h1>
+          <h1>Ejercicios</h1>
           <p className="muted">
-            <span className="members-breadcrumb">Ejercicios y clases</span>
+            <span className="members-breadcrumb">Actividades / ejercicios</span>
           </p>
         </div>
+        <Link to={routes.ejerciciosNuevo} className="btn-primary">
+          + Nuevo ejercicio
+        </Link>
       </header>
 
-      <div className="members-toolbar">
-        <Link to={routes.ejerciciosNuevo} className="btn-primary">
-          + Añadir ejercicio
-        </Link>
-      </div>
-
       {error ? <p className="login-error">{error}</p> : null}
+      {meta ? (
+        <p className="muted small">{pageRangeLabel(meta)}</p>
+      ) : null}
+
+      {showPager ? (
+        <div className="members-toolbar members-pagination-toolbar">
+          <div className="members-pagination">
+            <button
+              type="button"
+              className="btn-outline"
+              disabled={page <= 1 || isLoading}
+              onClick={() => setPage((p) => p - 1)}
+            >
+              Anterior
+            </button>
+            <span className="muted small">
+              Página {meta!.page} de {meta!.pageCount}
+            </span>
+            <button
+              type="button"
+              className="btn-outline"
+              disabled={page >= meta!.pageCount || isLoading}
+              onClick={() => setPage((p) => p + 1)}
+            >
+              Siguiente
+            </button>
+          </div>
+          <label className="members-page-size">
+            <span className="muted small">Por página</span>
+            <MmSelect
+              value={String(pageSize)}
+              disabled={isLoading}
+              onValueChange={(v) => {
+                setPageSize(Number(v));
+                setPage(1);
+              }}
+              options={[
+                { value: '25', label: '25' },
+                { value: '50', label: '50' },
+                { value: '100', label: '100' },
+              ]}
+            />
+          </label>
+        </div>
+      ) : null}
 
       <section className="members-panel mm-data-panel">
-        <div className="mm-data-panel__toolbar pay-toolbar">
-          <span className="muted">Mostrar entradas</span>
-          <MmSearchField
-            label="Buscar:"
-            value={search}
-            onChange={(e) => {
-              setSearch(e.target.value);
-              setPage(0);
-            }}
-            placeholder="Nombre, categoría, nivel o entrenador"
-          />
-        </div>
-        <div className="mm-data-panel__body">
         <div className="members-table-wrap">
           <table className="members-table">
             <thead>
               <tr>
-                <th>Nombre del ejercicio</th>
+                <th>Título</th>
                 <th>Categoría</th>
-                <th>Nivel</th>
+                <th>Dificultad</th>
                 <th>Entrenadores</th>
-                <th>Vídeos</th>
-                <th>Acción</th>
+                <th>Videos</th>
+                <th>Acciones</th>
               </tr>
             </thead>
             <tbody>
-              {slice.length === 0 ? (
+              {rows.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="pay-table-empty">
-                    No hay ejercicios. Crea una categoría y añade el primer
-                    ejercicio.
+                    {isLoading ? 'Cargando…' : 'No hay ejercicios.'}
                   </td>
                 </tr>
               ) : (
-                slice.map((row) => (
+                rows.map((row) => (
                   <tr key={row.id}>
                     <td>{row.title}</td>
-                    <td>{row.category_name || '—'}</td>
+                    <td>{row.category_name}</td>
                     <td>{activityDifficultyLabel(row.difficulty_level)}</td>
-                    <td>
-                      {row.trainer_names.length
-                        ? row.trainer_names.join(', ')
-                        : '—'}
-                    </td>
+                    <td>{row.trainer_names.join(', ') || '—'}</td>
                     <td>{row.video_count}</td>
-                    <MmTableActions label={`Acciones de ${row.title}`}>
+                    <MmTableActions label={`Ejercicio ${row.title}`}>
                       <Link
                         to={routes.ejerciciosDetail(row.id)}
                         className="btn-table btn-table--link"
-                        title="Ver"
                       >
                         Ver
                       </Link>
@@ -188,38 +189,7 @@ export function ActivitiesListPage() {
             </tbody>
           </table>
         </div>
-        </div>
       </section>
-
-      {filtered.length > PAGE_SIZE ? (
-        <footer className="pay-pagination">
-          <button
-            type="button"
-            className="btn-outline"
-            disabled={pageSafe <= 0}
-            onClick={() => setPage((p) => Math.max(0, p - 1))}
-          >
-            Anterior
-          </button>
-          <span className="muted">
-            Página {pageSafe + 1} de {pageCount} ({filtered.length} entradas)
-          </span>
-          <button
-            type="button"
-            className="btn-outline"
-            disabled={pageSafe >= pageCount - 1}
-            onClick={() => setPage((p) => Math.min(pageCount - 1, p + 1))}
-          >
-            Siguiente
-          </button>
-        </footer>
-      ) : (
-        <p className="muted pay-footer-note">
-          {filtered.length === 0
-            ? ''
-            : `Mostrando ${filtered.length} entrada(s).`}
-        </p>
-      )}
     </div>
   );
 }

@@ -6,12 +6,14 @@ import {
   Param,
   ParseIntPipe,
   Post,
+  Query,
   Req,
   UseGuards,
 } from '@nestjs/common';
 import { BusinessRoleGuard } from '../members/business-role.guard';
 import { BusinessRoles } from '../members/roles.decorator';
 import { CreateTrainingAssignmentDto } from './dto/create-training-assignment.dto';
+import { TrainingAssignmentsListQueryDto } from './dto/training-assignments-list-query.dto';
 import { TrainingAssignmentsService } from './training-assignments.service';
 
 type JwtReq = { user: { userId: number; role_name: string } };
@@ -23,8 +25,15 @@ export class TrainingAssignmentsController {
   constructor(private readonly assignments: TrainingAssignmentsService) {}
 
   @Get()
-  list(@Req() req: JwtReq) {
-    return this.assignments.list(req.user);
+  list(@Req() req: JwtReq, @Query() q: TrainingAssignmentsListQueryDto) {
+    return this.assignments.list(
+      req.user,
+      q.page ?? 1,
+      q.pageSize ?? 25,
+      q.q,
+      q.memberId,
+      q.trainerId,
+    );
   }
 
   @Get(':id')

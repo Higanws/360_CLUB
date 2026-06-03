@@ -39,10 +39,31 @@ export async function fetchMembersListPage(
 
 const MAX_PAGE_SIZE = 500;
 
-/**
- * Carga todas las páginas de socios (solo id + nombre) para desplegables / búsqueda en gestión.
- * Usa `pageSize` alto para minimizar viajes; máximo API 500 por página.
- */
+export type MemberLiteRow = {
+  id: number;
+  first_name: string | null;
+  last_name: string | null;
+};
+
+/** Búsqueda server-side para comboboxes (mín. 2 caracteres en la UI). */
+export async function searchMembersLite(
+  q: string,
+  limit = 20,
+): Promise<MemberLiteRow[]> {
+  const trimmed = q.trim();
+  if (trimmed.length < 2) return [];
+  const { data } = await api.get<{ members: MemberLiteRow[] }>(
+    '/members/search',
+    { params: { q: trimmed, limit } },
+  );
+  return (data.members ?? []).map((m) => ({
+    id: m.id,
+    first_name: m.first_name,
+    last_name: m.last_name,
+  }));
+}
+
+/** @deprecated Usar searchMembersLite en comboboxes; solo tests/admin. */
 export async function fetchAllMembersLiteRows(
   pageSize = 200,
 ): Promise<

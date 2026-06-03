@@ -6,12 +6,14 @@ import {
   Param,
   ParseIntPipe,
   Put,
+  Query,
   Req,
   UseGuards,
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { BusinessRoleGuard } from '../members/business-role.guard';
 import { BusinessRoles } from '../members/roles.decorator';
+import { NutritionOverviewQueryDto } from './dto/nutrition-overview-query.dto';
 import { UpsertNutritionPlanDto } from './dto/upsert-nutrition-plan.dto';
 import { NutritionService } from './nutrition.service';
 
@@ -24,11 +26,13 @@ export class NutritionController {
   constructor(private readonly nutrition: NutritionService) {}
 
   @Get('overview')
-  overview(@Req() req: JwtReq) {
-    return this.nutrition.overview({
-      userId: req.user.userId,
-      role_name: req.user.role_name,
-    });
+  overview(@Req() req: JwtReq, @Query() q: NutritionOverviewQueryDto) {
+    return this.nutrition.overview(
+      { userId: req.user.userId, role_name: req.user.role_name },
+      q.page ?? 1,
+      q.pageSize ?? 25,
+      q.q,
+    );
   }
 
   @Get('members/:memberId/plan')

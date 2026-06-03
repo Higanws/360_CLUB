@@ -15,6 +15,10 @@ import { CreateActivityCategoryDto } from './dto/create-activity-category.dto';
 import { CreateActivityDto } from './dto/create-activity.dto';
 import { UpdateActivityDto } from './dto/update-activity.dto';
 import { normalizeClubRole } from '../shared/domain/club/club-roles';
+import {
+  buildPageMeta,
+  paginationSkip,
+} from '../shared/dto/paginated-meta';
 import { normalizeActivityDifficulty } from './activity-difficulty';
 
 function normUrls(urls: string[]): string[] {
@@ -71,8 +75,12 @@ export class ActivitiesService {
     return this.categories.save(row);
   }
 
-  async listActivities(): Promise<
-    {
+  async listActivities(
+    page = 1,
+    pageSize = 25,
+    q?: string,
+  ): Promise<{
+    activities: Array<{
       id: number;
       title: string;
       category_id: number;
@@ -81,24 +89,71 @@ export class ActivitiesService {
       difficulty_level: string;
       trainer_names: string[];
       video_count: number;
-    }[]
-  > {
+    }>;
+    meta: ReturnType<typeof buildPageMeta>;
+  }> {
+    const ps = Math.min(100, Math.max(1, pageSize));
+    const pg = Math.max(1, page);
+
+    const idQb = this.activities
+      .createQueryBuilder('a')
+      .leftJoin('a.category', 'c')
+      .select('a.id', 'id')
+      .orderBy('a.id', 'DESC');
+
+    const qTrim = q?.trim();
+    if (qTrim) {
+      const like = `%${qTrim.replace(/[%_\\]/g, '\\$&')}%`;
+      idQb.andWhere(
+        `(a.title LIKE :like OR c.name LIKE :like)`,
+        { like },
+      );
+    }
+
+    const total = await idQb.clone().getCount();
+    const idRows = await idQb
+      .offset(paginationSkip(pg, ps))
+      .limit(ps)
+      .getRawMany<{ id: number }>();
+    const ids = idRows.map((r) => Number(r.id)).filter((id) => id > 0);
+    if (!ids.length) {
+      return { activities: [], meta: buildPageMeta(total, pg, ps) };
+    }
+
     const rows = await this.activities.find({
-      relations: ['category', 'trainers', 'trainers.member', 'videos'],
+      where: { id: In(ids) },
+      relations: ['category', 'trainers', 'trainers.member'],
       order: { id: 'DESC' },
     });
-    return rows.map((a) => ({
-      id: a.id,
-      title: a.title,
-      category_id: a.category?.id ?? 0,
-      category_name: a.category?.name ?? '',
-      description: a.description,
-      difficulty_level: normalizeActivityDifficulty(a.difficulty_level),
-      trainer_names: (a.trainers ?? []).map((t) =>
-        trainerDisplayName(t.member),
-      ),
-      video_count: (a.videos ?? []).length,
-    }));
+    const videoCounts = await this.videos
+      .createQueryBuilder('v')
+      .select('v.activity_id', 'activity_id')
+      .addSelect('COUNT(v.id)', 'cnt')
+      .where('v.activity_id IN (:...ids)', { ids })
+      .groupBy('v.activity_id')
+      .getRawMany<{ activity_id: number; cnt: string | number }>();
+    const countByActivity = new Map(
+      videoCounts.map((r) => [Number(r.activity_id), Number(r.cnt)]),
+    );
+
+    const byId = new Map(rows.map((a) => [a.id, a]));
+    const activities = ids
+      .map((id) => byId.get(id))
+      .filter((a): a is Activity => a != null)
+      .map((a) => ({
+        id: a.id,
+        title: a.title,
+        category_id: a.category?.id ?? 0,
+        category_name: a.category?.name ?? '',
+        description: a.description,
+        difficulty_level: normalizeActivityDifficulty(a.difficulty_level),
+        trainer_names: (a.trainers ?? []).map((t) =>
+          trainerDisplayName(t.member),
+        ),
+        video_count: countByActivity.get(a.id) ?? 0,
+      }));
+
+    return { activities, meta: buildPageMeta(total, pg, ps) };
   }
 
   async getOne(id: number) {

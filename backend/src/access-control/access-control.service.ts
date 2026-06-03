@@ -6,6 +6,12 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { normalizeClubRole } from '../shared/domain/club/club-roles';
+import {
+  buildPageMeta,
+  paginationSkip,
+  type PaginatedMeta,
+} from '../shared/dto/paginated-meta';
+import { DashboardCacheService } from '../shared/cache/dashboard-cache.service';
 import { normalizeMemberLookupToken } from '../shared/domain/club/member-lookup';
 import { toIsoDateOnly } from '../shared/domain/shared/iso-date';
 import { ClubAccessLog } from '../entities/club-access-log.entity';
@@ -49,6 +55,7 @@ export class AccessControlService {
     private readonly payments: Repository<MembershipPayment>,
     @InjectRepository(ClubAccessLog)
     private readonly logs: Repository<ClubAccessLog>,
+    private readonly dashboardCache: DashboardCacheService,
   ) {}
 
   private async settingsRow(): Promise<GeneralSetting | null> {
@@ -318,6 +325,7 @@ export class AccessControlService {
           days_overdue: partial.days_overdue ?? null,
         });
         await this.logs.save(row);
+        await this.dashboardCache.invalidateBusinessMetrics();
       } catch (e) {
         this.logger.warn(
           `No se pudo guardar club_access_log: ${e instanceof Error ? e.message : e}`,
@@ -487,11 +495,12 @@ export class AccessControlService {
 
   async recentLogs(
     actor: JwtActor,
-    limit: number,
+    page = 1,
+    pageSize = 25,
     fromYmd?: string | null,
     toYmd?: string | null,
-  ): Promise<
-    Array<{
+  ): Promise<{
+    logs: Array<{
       id: number;
       access_at: string;
       access_date: string;
@@ -503,9 +512,11 @@ export class AccessControlService {
       last_name: string | null;
       staff_first_name: string | null;
       staff_last_name: string | null;
-    }>
-  > {
-    const take = Math.min(Math.max(limit, 1), 500);
+    }>;
+    meta: PaginatedMeta;
+  }> {
+    const ps = Math.min(100, Math.max(1, pageSize));
+    const pg = Math.max(1, page);
     const settings = await this.settingsRow();
     const ownOnly = settings?.staff_can_view_own_member === 1;
     const qb = this.logs
@@ -549,9 +560,11 @@ export class AccessControlService {
       );
     }
 
+    const total = await qb.clone().getCount();
     const rows = await qb
       .orderBy('l.id', 'DESC')
-      .take(take)
+      .offset(paginationSkip(pg, ps))
+      .limit(ps)
       .getRawMany<{
         id: number;
         access_at: Date | string;
@@ -566,21 +579,24 @@ export class AccessControlService {
         staff_last_name: string | null;
       }>();
 
-    return rows.map((r) => ({
-      id: r.id,
-      access_at:
-        r.access_at instanceof Date
-          ? r.access_at.toISOString()
-          : String(r.access_at),
-      access_date: toIsoDateOnly(r.access_date as Date) ?? String(r.access_date),
-      outcome: r.outcome,
-      status_display: r.status_display,
-      lookup_raw: r.lookup_raw,
-      member_id: r.member_id,
-      first_name: r.first_name,
-      last_name: r.last_name,
-      staff_first_name: r.staff_first_name,
-      staff_last_name: r.staff_last_name,
-    }));
+    return {
+      logs: rows.map((r) => ({
+        id: r.id,
+        access_at:
+          r.access_at instanceof Date
+            ? r.access_at.toISOString()
+            : String(r.access_at),
+        access_date: toIsoDateOnly(r.access_date as Date) ?? String(r.access_date),
+        outcome: r.outcome,
+        status_display: r.status_display,
+        lookup_raw: r.lookup_raw,
+        member_id: r.member_id,
+        first_name: r.first_name,
+        last_name: r.last_name,
+        staff_first_name: r.staff_first_name,
+        staff_last_name: r.staff_last_name,
+      })),
+      meta: buildPageMeta(total, pg, ps),
+    };
   }
 }

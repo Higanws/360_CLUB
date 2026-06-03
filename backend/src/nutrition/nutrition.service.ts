@@ -5,11 +5,16 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository } from 'typeorm';
+import { Repository } from 'typeorm';
 import { GeneralSetting } from '../entities/general-setting.entity';
 import { GymMember } from '../entities/gym-member.entity';
 import { NutritionPlan } from '../entities/nutrition-plan.entity';
 import { UpsertNutritionPlanDto } from './dto/upsert-nutrition-plan.dto';
+import {
+  buildPageMeta,
+  paginationSkip,
+  type PaginatedMeta,
+} from '../shared/dto/paginated-meta';
 import { normalizeClubRole } from '../shared/domain/club/club-roles';
 import { assertStaffOwnsMember } from '../shared/application/security/staff-member-scope';
 import { toIsoDateOnly } from '../shared/domain/shared/iso-date';
@@ -118,77 +123,76 @@ export class NutritionService {
     assertStaffOwnsMember(actor, member);
   }
 
-  async overview(actor: {
-    userId: number;
-    role_name: string;
-  }): Promise<{ rows: NutritionOverviewRow[] }> {
+  async overview(
+    actor: { userId: number; role_name: string },
+    page = 1,
+    pageSize = 25,
+    q?: string,
+  ): Promise<{ rows: NutritionOverviewRow[]; meta: PaginatedMeta }> {
     this.assertBusinessRole(actor.role_name);
     const role = normalizeClubRole(actor.role_name);
     const uid = actor.userId;
+    const ps = Math.min(100, Math.max(1, pageSize));
+    const pg = Math.max(1, page);
 
-    const sql = `
+    const params: unknown[] = ['member'];
+    let whereExtra = '';
+    if (role === 'staff_member') {
+      whereExtra += ' AND m.assign_staff_mem = ?';
+      params.push(uid);
+    }
+    const qTrim = q?.trim();
+    if (qTrim) {
+      whereExtra +=
+        " AND (LOWER(CONCAT(COALESCE(m.first_name,''), ' ', COALESCE(m.last_name,''))) LIKE LOWER(?) OR CAST(m.id AS CHAR) LIKE ?)";
+      const like = `%${qTrim.replace(/[%_\\]/g, '\\$&')}%`;
+      params.push(like, like);
+    }
+
+    const countSql = `
+SELECT COUNT(*) AS cnt
+FROM gym_member m
+WHERE LOWER(TRIM(m.role_name)) = ?${whereExtra}`;
+    const countRow = (await this.members.manager.query(countSql, params)) as Array<{
+      cnt: number | string;
+    }>;
+    const total = Number(countRow[0]?.cnt ?? 0);
+
+    const listSql = `
 SELECT m.id AS member_id,
   m.first_name AS first_name,
   m.last_name AS last_name,
-  m.assign_staff_mem AS assign_staff_mem,
   np.id AS plan_id,
   np.valid_from AS valid_from,
-  np.valid_to AS valid_to
+  np.valid_to AS valid_to,
+  COALESCE(JSON_LENGTH(np.meals_schedule_json), 0) AS meal_count
 FROM gym_member m
 LEFT JOIN nutrition_plan np ON np.member_id = m.id
-WHERE LOWER(TRIM(m.role_name)) = ?
+WHERE LOWER(TRIM(m.role_name)) = ?${whereExtra}
 ORDER BY m.first_name ASC, m.last_name ASC
-`;
-    const raw = (await this.members.manager.query(sql, [
-      'member',
-    ])) as Array<{
+LIMIT ? OFFSET ?`;
+    const listParams = [...params, ps, paginationSkip(pg, ps)];
+    const raw = (await this.members.manager.query(listSql, listParams)) as Array<{
       member_id: number;
       first_name: string | null;
       last_name: string | null;
-      assign_staff_mem: number | null;
       plan_id: number | null;
       valid_from: Date | string | null;
       valid_to: Date | string | null;
+      meal_count: number | string;
     }>;
 
-    let filtered = raw;
-    if (role === 'staff_member') {
-      filtered = raw.filter((row) => row.assign_staff_mem === uid);
-    }
-
-    const planIds = [
-      ...new Set(
-        filtered
-          .map((r) => r.plan_id)
-          .filter((id): id is number => id != null && id > 0),
-      ),
-    ];
-    const countByPlanId = new Map<number, number>();
-    if (planIds.length) {
-      const planRows = await this.plans.find({
-        where: { id: In(planIds) },
-        select: ['id', 'meals_schedule_json'],
-      });
-      for (const p of planRows) {
-        const slots = parseMealsScheduleJson(
-          p.meals_schedule_json as unknown,
-        );
-        countByPlanId.set(p.id, slots.length);
-      }
-    }
-
-    const rows: NutritionOverviewRow[] = filtered.map((row) => ({
+    const rows: NutritionOverviewRow[] = raw.map((row) => ({
       member_id: row.member_id,
       first_name: row.first_name,
       last_name: row.last_name,
       plan_id: row.plan_id,
       valid_from: toIsoDateOnly(row.valid_from as Date),
       valid_to: toIsoDateOnly(row.valid_to as Date),
-      meal_count:
-        row.plan_id != null ? (countByPlanId.get(row.plan_id) ?? 0) : 0,
+      meal_count: Number(row.meal_count ?? 0),
     }));
 
-    return { rows };
+    return { rows, meta: buildPageMeta(total, pg, ps) };
   }
 
   async getPlanForMember(

@@ -4,7 +4,11 @@ import { MmCombobox } from '../../components/ui/MmCombobox';
 import { MmSelect } from '../../components/ui/MmSelect';
 import { routes } from '../../config/member-management';
 import { api } from '../../lib/api';
-import { fetchAllMembersLiteRows } from '../../lib/members-api';
+import {
+  searchMembersLite,
+  type MemberLiteRow,
+} from '../../lib/members-api';
+import { useDebouncedValue } from '../../hooks/useDebouncedValue';
 import { extractApiMessage } from '../../lib/extract-api-message';
 import { useAuth } from '../../context/AuthContext';
 
@@ -13,14 +17,6 @@ type RoutineRow = {
   title: string;
   difficulty_level: string;
   exercise_count: number;
-};
-
-type MembersPayload = {
-  members: Array<{
-    id: number;
-    first_name: string | null;
-    last_name: string | null;
-  }>;
 };
 
 type StaffPayload = {
@@ -46,11 +42,13 @@ export function TrainingAssignmentFormPage() {
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [routines, setRoutines] = useState<RoutineRow[]>([]);
-  const [members, setMembers] = useState<MembersPayload['members']>([]);
+  const [members, setMembers] = useState<MemberLiteRow[]>([]);
+  const [searchResults, setSearchResults] = useState<MemberLiteRow[]>([]);
   const [staff, setStaff] = useState<StaffPayload['staff']>([]);
 
   const [routineId, setRoutineId] = useState('');
   const [memberSearch, setMemberSearch] = useState('');
+  const debouncedMemberSearch = useDebouncedValue(memberSearch, 300);
   const [pickTrainer, setPickTrainer] = useState('');
   const [memberIds, setMemberIds] = useState<number[]>([]);
   const [trainerMemberIds, setTrainerMemberIds] = useState<number[]>([]);
@@ -65,45 +63,50 @@ export function TrainingAssignmentFormPage() {
   useEffect(() => {
     if (!user) return;
     Promise.all([
-      api.get<RoutineRow[]>('/training-routines'),
-      fetchAllMembersLiteRows(200),
-      api.get<StaffPayload>('/staff'),
+      api.get<{ routines: RoutineRow[] }>('/training-routines', {
+        params: { page: 1, pageSize: 500 },
+      }),
+      api.get<StaffPayload>('/staff', { params: { page: 1, pageSize: 500 } }),
     ])
-      .then(([rRes, memberRows, sRes]) => {
-        setRoutines(rRes.data);
-        setMembers(memberRows);
+      .then(([rRes, sRes]) => {
+        setRoutines(rRes.data.routines ?? []);
         setStaff(sRes.data.staff ?? []);
         setError(null);
       })
-      .catch(() => setError('No se pudieron cargar rutinas, socios o staff.'));
+      .catch(() => setError('No se pudieron cargar rutinas o staff.'));
   }, [user]);
 
-  const memberById = useMemo(() => {
-    const m = new Map<number, MembersPayload['members'][0]>();
-    for (const x of members) m.set(x.id, x);
-    return m;
-  }, [members]);
-
-  const staffById = useMemo(() => {
-    const m = new Map<number, StaffPayload['staff'][0]>();
-    for (const x of staff) m.set(x.id, x);
-    return m;
-  }, [staff]);
-
-  const membersPickList = useMemo(() => {
-    const q = memberSearch.trim().toLowerCase();
-    const pool = members.filter((m) => !memberIds.includes(m.id));
-    if (!q) return [];
-    return pool
-      .filter((m) => {
-        const blob = [m.first_name, m.last_name, String(m.id)]
-          .filter(Boolean)
-          .join(' ')
-          .toLowerCase();
-        return blob.includes(q);
+  useEffect(() => {
+    if (!user) return;
+    const q = debouncedMemberSearch.trim();
+    if (q.length < 2) {
+      setSearchResults([]);
+      return;
+    }
+    let cancelled = false;
+    searchMembersLite(q, 20)
+      .then((rows) => {
+        if (!cancelled) setSearchResults(rows);
       })
-      .slice(0, 20);
-  }, [members, memberSearch, memberIds]);
+      .catch(() => {
+        if (!cancelled) setSearchResults([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [user, debouncedMemberSearch]);
+
+  const memberById = useMemo(() => {
+    const m = new Map<number, MemberLiteRow>();
+    for (const x of members) m.set(x.id, x);
+    for (const x of searchResults) m.set(x.id, x);
+    return m;
+  }, [members, searchResults]);
+
+  const membersPickList = useMemo(
+    () => searchResults.filter((m) => !memberIds.includes(m.id)).slice(0, 20),
+    [searchResults, memberIds],
+  );
 
   const memberComboboxOptions = useMemo(
     () =>
@@ -132,6 +135,12 @@ export function TrainingAssignmentFormPage() {
     [staff],
   );
 
+  const staffById = useMemo(() => {
+    const m = new Map<number, StaffPayload['staff'][0]>();
+    for (const x of staff) m.set(x.id, x);
+    return m;
+  }, [staff]);
+
   useEffect(() => {
     if (!user) return;
     if (isStaffOnly) {
@@ -144,8 +153,15 @@ export function TrainingAssignmentFormPage() {
       setError('Ese socio ya está en la lista.');
       return;
     }
+    const hit = searchResults.find((m) => m.id === id);
+    if (hit) {
+      setMembers((prev) =>
+        prev.some((m) => m.id === id) ? prev : [...prev, hit],
+      );
+    }
     setMemberIds((p) => [...p, id]);
     setMemberSearch('');
+    setSearchResults([]);
     setError(null);
   }
 
@@ -260,8 +276,12 @@ export function TrainingAssignmentFormPage() {
                 onQueryChange={setMemberSearch}
                 options={memberComboboxOptions}
                 onSelect={(v) => addMemberFromPicker(parseInt(v, 10))}
-                placeholder="Buscar socio…"
-                emptyMessage="Ningún socio coincide (o ya está añadido)."
+                placeholder="Buscar socio (mín. 2 caracteres)…"
+                emptyMessage={
+                  memberSearch.trim().length < 2
+                    ? 'Escribe al menos 2 caracteres.'
+                    : 'Ningún socio coincide (o ya está añadido).'
+                }
                 aria-label="Buscar socio para añadir"
               />
             </div>

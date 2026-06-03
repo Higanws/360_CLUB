@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
+import { MmSelect } from '../components/ui/MmSelect';
 import { MemberAvatar } from '../components/mm/MemberAvatar';
 import { MmTableActions } from '../components/mm/MmTableActions';
 import { PageLoading } from '../components/mm/PageLoading';
@@ -8,56 +10,48 @@ import { memberPortalRoutes } from '../config/member-portal';
 import { useGestionAuth } from '../hooks/useGestionAuth';
 import { api } from '../lib/api';
 import { apiErrorStatus } from '../lib/is-api-error';
-
-type StaffPayload = {
-  staff: Array<{
-    id: number;
-    first_name: string | null;
-    last_name: string | null;
-    image: string | null;
-    email: string | null;
-    mobile: string | null;
-    club_role_name: string | null;
-  }>;
-  meta: {
-    can_manage: boolean;
-    is_administrator: boolean;
-  };
-};
+import { useStaffList } from '../lib/queries/staff';
+import {
+  DEFAULT_PAGE_SIZE,
+  pageRangeLabel,
+} from '../lib/pagination';
 
 export function StaffListPage() {
   useGestionAuth();
   const navigate = useNavigate();
-  const [data, setData] = useState<StaffPayload | null>(null);
+  const queryClient = useQueryClient();
   const [error, setError] = useState<string | null>(null);
-  const [loadingData, setLoadingData] = useState(true);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
+  const { data, isLoading, isError, error: queryError } = useStaffList(
+    page,
+    pageSize,
+  );
+
+  useEffect(() => {
+    if (isError && apiErrorStatus(queryError) === 403) {
+      navigate(memberPortalRoutes.wellness, { replace: true });
+    } else if (isError) {
+      setError('No se pudo cargar el personal.');
+    } else {
+      setError(null);
+    }
+  }, [isError, queryError, navigate]);
 
   async function handleDelete(id: number) {
     if (!confirm('¿Eliminar este miembro del personal?')) return;
     try {
       await api.delete(`/staff/${id}`);
-      const { data: d } = await api.get<StaffPayload>('/staff');
-      setData(d);
+      await queryClient.invalidateQueries({ queryKey: ['staff', 'list'] });
       setError(null);
     } catch {
       setError('No se pudo eliminar.');
     }
   }
 
-  useEffect(() => {
-    setLoadingData(true);
-    api
-      .get<StaffPayload>('/staff')
-      .then(({ data: d }) => setData(d))
-      .catch((e: unknown) => {
-        if (apiErrorStatus(e) === 403) {
-          navigate(memberPortalRoutes.wellness, { replace: true });
-          return;
-        }
-        setError('No se pudo cargar el personal.');
-      })
-      .finally(() => setLoadingData(false));
-  }, [navigate]);
+  const loadingData = isLoading && !data;
+  const meta = data?.meta;
+  const showPager = meta && meta.pageCount > 1;
 
   if (loadingData && !data) {
     return <PageLoading message="Cargando personal…" />;
@@ -78,6 +72,52 @@ export function StaffListPage() {
       </header>
 
       {error ? <p className="login-error">{error}</p> : null}
+
+      {meta && meta.total > 0 ? (
+        <p className="muted small">{pageRangeLabel(meta)}</p>
+      ) : null}
+
+      {showPager ? (
+        <div className="members-toolbar members-pagination-toolbar">
+          <div className="members-pagination">
+            <button
+              type="button"
+              className="btn-outline"
+              disabled={page <= 1 || isLoading}
+              onClick={() => setPage((p) => p - 1)}
+            >
+              Anterior
+            </button>
+            <span className="muted small members-pagination-status">
+              Página {meta!.page} de {meta!.pageCount}
+            </span>
+            <button
+              type="button"
+              className="btn-outline"
+              disabled={page >= meta!.pageCount || isLoading}
+              onClick={() => setPage((p) => p + 1)}
+            >
+              Siguiente
+            </button>
+          </div>
+          <label className="members-page-size">
+            <span className="muted small">Por página</span>
+            <MmSelect
+              value={String(pageSize)}
+              disabled={isLoading}
+              onValueChange={(v) => {
+                setPageSize(Number(v));
+                setPage(1);
+              }}
+              options={[
+                { value: '25', label: '25' },
+                { value: '50', label: '50' },
+                { value: '100', label: '100' },
+              ]}
+            />
+          </label>
+        </div>
+      ) : null}
 
       <section className="members-panel mm-data-panel">
         <div className="members-table-wrap">

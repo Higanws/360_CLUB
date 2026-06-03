@@ -1,4 +1,3 @@
-import axios from 'axios';
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { RedirectToLogin } from '../../components/auth/RedirectToLogin';
@@ -16,37 +15,9 @@ import {
 } from 'recharts';
 import { memberPortalRoutes } from '../../config/member-portal';
 import { routes } from '../../config/member-management';
-import { api } from '../../lib/api';
 import { formatMoney } from '../../lib/format-money';
+import { useBusinessMetrics } from '../../lib/queries/dashboard';
 import { useAuth } from '../../context/AuthContext';
-
-type BusinessMetrics = {
-  generated_at: string;
-  summary: {
-    members: number;
-    staff: number;
-    active_members: number;
-    membership_plans: number;
-    catalog_products: number;
-    exercises: number;
-    training_routines: number;
-    nutrition_plans: number;
-  };
-  membership_debt: {
-    pending_invoices: number;
-    total_owed: number;
-  };
-  sales_last_30d: Array<{
-    date: string;
-    revenue: number;
-    sales_count: number;
-  }>;
-  access_last_14d: Array<{
-    date: string;
-    allowed: number;
-    denied: number;
-  }>;
-};
 
 function shortDate(ymd: string): string {
   const [, m, d] = ymd.split('-');
@@ -56,30 +27,29 @@ function shortDate(ymd: string): string {
 export function DashboardPage() {
   const { user, loading } = useAuth();
   const navigate = useNavigate();
-  const [data, setData] = useState<BusinessMetrics | null>(null);
+  const role = user?.role_name?.trim().toLowerCase() ?? '';
+  const metricsEnabled = !!user && role !== 'member';
+  const {
+    data,
+    isError,
+    error: queryError,
+  } = useBusinessMetrics(metricsEnabled);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!user) return;
-    const r = user.role_name?.trim().toLowerCase() ?? '';
-    if (r === 'member') {
+    if (role === 'member') {
       navigate(memberPortalRoutes.wellness, { replace: true });
-      return;
     }
-    api
-      .get<BusinessMetrics>('/dashboard/business-metrics')
-      .then(({ data: d }) => {
-        setData(d);
-        setError(null);
-      })
-      .catch((e: unknown) => {
-        if (axios.isAxiosError(e) && e.response?.status === 403) {
-          navigate(memberPortalRoutes.wellness, { replace: true });
-          return;
-        }
-        setError('No se pudo cargar el panel de métricas.');
-      });
-  }, [user, navigate]);
+  }, [user, role, navigate]);
+
+  useEffect(() => {
+    if (isError) {
+      setError('No se pudo cargar el panel de métricas.');
+    } else {
+      setError(null);
+    }
+  }, [isError, queryError]);
 
   const salesChartData = useMemo(
     () =>

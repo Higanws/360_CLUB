@@ -7,12 +7,14 @@ import {
   ParseIntPipe,
   Patch,
   Post,
+  Query,
   Req,
   UseGuards,
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { BusinessRoleGuard } from '../members/business-role.guard';
 import { BusinessRoles } from '../members/roles.decorator';
+import { PaginationQueryDto } from '../shared/dto/pagination-query.dto';
 import { ActivitiesService } from './activities.service';
 import { CreateActivityCategoryDto } from './dto/create-activity-category.dto';
 import { CreateActivityDto } from './dto/create-activity.dto';
@@ -37,8 +39,8 @@ export class ActivitiesController {
   }
 
   @Get()
-  list() {
-    return this.activities.listActivities();
+  list(@Query() q: PaginationQueryDto) {
+    return this.activities.listActivities(q.page ?? 1, q.pageSize ?? 25);
   }
 
   @Get(':id')

@@ -11,7 +11,12 @@ import { GymMember } from '../entities/gym-member.entity';
 import { MembershipPayment } from '../entities/membership-payment.entity';
 import { Membership } from '../entities/membership.entity';
 import { normalizeClubRole } from '../shared/domain/club/club-roles';
+import {
+  buildPageMeta,
+  paginationSkip,
+} from '../shared/dto/paginated-meta';
 import { ManualMembershipPaymentDto } from './dto/manual-membership-payment.dto';
+import { DashboardCacheService } from '../shared/cache/dashboard-cache.service';
 
 export type ExpiringPaymentRow = {
   mp_id: number;
@@ -46,6 +51,7 @@ export class MembershipPaymentsService {
     private readonly plans: Repository<Membership>,
     @InjectRepository(GeneralSetting)
     private readonly settings: Repository<GeneralSetting>,
+    private readonly dashboardCache: DashboardCacheService,
   ) {}
 
   private async settingsRow(): Promise<GeneralSetting | null> {
@@ -55,10 +61,16 @@ export class MembershipPaymentsService {
   }
 
   /** Lista membresías (filas membership_payment) con fin de vigencia en el mes calendario actual. */
-  async listExpiringThisMonth(actor: {
-    userId: number;
-    role_name: string;
-  }): Promise<{ title: string; subtitle: string; rows: ExpiringPaymentRow[] }> {
+  async listExpiringThisMonth(
+    actor: { userId: number; role_name: string },
+    page = 1,
+    pageSize = 25,
+  ): Promise<{
+    title: string;
+    subtitle: string;
+    rows: ExpiringPaymentRow[];
+    meta: ReturnType<typeof buildPageMeta>;
+  }> {
     const r = normalizeClubRole(actor.role_name);
     if (r !== 'administrator' && r !== 'staff_member') {
       throw new ForbiddenException(
@@ -88,6 +100,12 @@ export class MembershipPaymentsService {
       qb.andWhere('gm.assign_staff_mem = :uid', { uid: actor.userId });
     }
 
+    const ps = Math.min(100, Math.max(1, pageSize));
+    const pg = Math.max(1, page);
+
+    const countQb = qb.clone();
+    const total = await countQb.getCount();
+
     const raw = await qb
       .select([
         'mp.mp_id AS mp_id',
@@ -105,6 +123,8 @@ export class MembershipPaymentsService {
       ])
       .orderBy('mp.end_date', 'ASC')
       .addOrderBy('mp.mp_id', 'ASC')
+      .offset(paginationSkip(pg, ps))
+      .limit(ps)
       .getRawMany();
 
     const rows: ExpiringPaymentRow[] = raw.map((row) => {
@@ -137,14 +157,16 @@ export class MembershipPaymentsService {
       title: 'Cobro',
       subtitle: 'Cobro de membresías',
       rows,
+      meta: buildPageMeta(total, pg, ps),
     };
   }
 
   /** Opciones para el formulario de registro manual. */
-  async manualFormOptions(actor: {
-    userId: number;
-    role_name: string;
-  }): Promise<{
+  async manualFormOptions(
+    actor: { userId: number; role_name: string },
+    q?: string,
+    limit = 20,
+  ): Promise<{
     members: { id: number; label: string }[];
     memberships: { id: number; label: string | null; amount: number | null }[];
   }> {
@@ -155,25 +177,46 @@ export class MembershipPaymentsService {
       );
     }
 
+    const plans = await this.plans.find({
+      order: { membership_label: 'ASC' },
+    });
+
+    const qTrim = q?.trim() ?? '';
+    if (!qTrim) {
+      return {
+        members: [],
+        memberships: plans.map((p) => ({
+          id: p.id,
+          label: p.membership_label,
+          amount: p.membership_amount ?? null,
+        })),
+      };
+    }
+
     const settingRow = await this.settingsRow();
     const ownOnly =
       r === 'staff_member' && settingRow?.staff_can_view_own_member === 1;
+
+    const take = Math.min(50, Math.max(1, limit));
+    const like = `%${qTrim.replace(/[%_\\]/g, '\\$&')}%`;
 
     const mq = this.members
       .createQueryBuilder('m')
       .select(['m.id', 'm.first_name', 'm.last_name'])
       .where('LOWER(TRIM(m.role_name)) = :mr', { mr: 'member' })
-      .orderBy('m.first_name', 'ASC');
+      .andWhere(
+        `(LOWER(CONCAT(COALESCE(m.first_name,''), ' ', COALESCE(m.last_name,''))) LIKE LOWER(:like)
+          OR CAST(m.id AS CHAR) LIKE :like)`,
+        { like },
+      )
+      .orderBy('m.first_name', 'ASC')
+      .take(take);
 
     if (ownOnly) {
       mq.andWhere('m.assign_staff_mem = :uid', { uid: actor.userId });
     }
 
     const memRows = await mq.getMany();
-
-    const plans = await this.plans.find({
-      order: { membership_label: 'ASC' },
-    });
 
     return {
       members: memRows.map((m) => ({
@@ -255,6 +298,7 @@ export class MembershipPaymentsService {
     });
 
     const saved = await this.payments.save(row);
+    await this.dashboardCache.invalidateBusinessMetrics();
     return { ok: true, mp_id: saved.mp_id };
   }
 
@@ -298,6 +342,7 @@ export class MembershipPaymentsService {
     mp.payment_status = '1';
     mp.membership_status = 'Continue';
     await this.payments.save(mp);
+    await this.dashboardCache.invalidateBusinessMetrics();
     return { ok: true };
   }
 }

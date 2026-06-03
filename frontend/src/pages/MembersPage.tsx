@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import { MmSelect } from '../components/ui/MmSelect';
 import { MemberAvatar } from '../components/mm/MemberAvatar';
 import { MmTableActions } from '../components/mm/MmTableActions';
@@ -9,10 +10,7 @@ import { memberPortalRoutes } from '../config/member-portal';
 import { useGestionAuth } from '../hooks/useGestionAuth';
 import { api } from '../lib/api';
 import { apiErrorStatus } from '../lib/is-api-error';
-import {
-  fetchMembersListPage,
-  type MembersListApiPayload,
-} from '../lib/members-api';
+import { useMembersList } from '../lib/queries/members';
 
 function formatClubDate(
   iso: string | null,
@@ -49,28 +47,25 @@ function todayIso(): string {
 export function MembersPage() {
   useGestionAuth();
   const navigate = useNavigate();
-  const [data, setData] = useState<MembersListApiPayload | null>(null);
+  const queryClient = useQueryClient();
   const [error, setError] = useState<string | null>(null);
-  const [loadingData, setLoadingData] = useState(true);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
 
+  const { data, isLoading, isError, error: queryError } = useMembersList(
+    page,
+    pageSize,
+  );
+
   useEffect(() => {
-    setLoadingData(true);
-    fetchMembersListPage(page, pageSize)
-      .then((d) => {
-        setData(d);
-        setError(null);
-      })
-      .catch((e: unknown) => {
-        if (apiErrorStatus(e) === 403) {
-          navigate(memberPortalRoutes.wellness, { replace: true });
-          return;
-        }
-        setError('No se pudo cargar la lista de socios.');
-      })
-      .finally(() => setLoadingData(false));
-  }, [page, pageSize, navigate]);
+    if (isError && apiErrorStatus(queryError) === 403) {
+      navigate(memberPortalRoutes.wellness, { replace: true });
+    } else if (isError) {
+      setError('No se pudo cargar la lista de socios.');
+    } else {
+      setError(null);
+    }
+  }, [isError, queryError, navigate]);
 
   async function handleDelete(id: number) {
     if (!confirm('¿Eliminar este socio? Esta acción no se puede deshacer.')) {
@@ -78,14 +73,7 @@ export function MembersPage() {
     }
     try {
       await api.delete(`/members/${id}`);
-      let p = page;
-      let d = await fetchMembersListPage(p, pageSize);
-      if (d.members.length === 0 && d.meta.total > 0 && p > 1) {
-        p -= 1;
-        setPage(p);
-        d = await fetchMembersListPage(p, pageSize);
-      }
-      setData(d);
+      await queryClient.invalidateQueries({ queryKey: ['members', 'list'] });
       setError(null);
     } catch {
       setError('No se pudo eliminar el socio.');
@@ -94,7 +82,9 @@ export function MembersPage() {
 
   const today = todayIso();
 
-  if (loadingData && !data) {
+  const loadingData = isLoading && !data;
+
+  if (loadingData) {
     return <PageLoading message="Cargando socios…" />;
   }
 

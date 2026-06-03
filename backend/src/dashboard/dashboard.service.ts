@@ -1,6 +1,12 @@
+import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { Inject, Injectable } from '@nestjs/common';
+import type { Cache } from 'cache-manager';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
+import {
+  CACHE_KEYS,
+  CACHE_TTL,
+} from '../shared/cache/cache-ttl';
 import { CLUB_ROLES } from '../shared/domain/club/club-roles';
 import {
   GYM_MEMBER_READ,
@@ -62,9 +68,25 @@ export class DashboardService {
   constructor(
     @InjectDataSource() private readonly ds: DataSource,
     @Inject(GYM_MEMBER_READ) private readonly memberRead: GymMemberReadRepository,
+    @Inject(CACHE_MANAGER) private readonly cache: Cache,
   ) {}
 
   async getBusinessMetrics(): Promise<DashboardBusinessMetrics> {
+    const cached = await this.cache.get<DashboardBusinessMetrics>(
+      CACHE_KEYS.DASHBOARD_BUSINESS_METRICS,
+    );
+    if (cached) return cached;
+
+    const result = await this.computeBusinessMetrics();
+    await this.cache.set(
+      CACHE_KEYS.DASHBOARD_BUSINESS_METRICS,
+      result,
+      CACHE_TTL.DASHBOARD_METRICS,
+    );
+    return result;
+  }
+
+  private async computeBusinessMetrics(): Promise<DashboardBusinessMetrics> {
     const [members, staff, active_members] = await Promise.all([
       this.memberRead.countByRole(CLUB_ROLES.MEMBER),
       this.memberRead.countByRole(CLUB_ROLES.STAFF),
@@ -105,14 +127,17 @@ export class DashboardService {
     const from30 = addDaysLocal(today, -29);
     const from14 = addDaysLocal(today, -13);
 
+    const start30 = new Date(`${from30}T00:00:00.000`);
+    const endToday = new Date(`${today}T23:59:59.999`);
+
     const saleAgg = await this.ds
       .getRepository(PosSale)
       .createQueryBuilder('s')
       .select('DATE(s.created_at)', 'd')
       .addSelect('COUNT(s.id)', 'cnt')
       .addSelect('COALESCE(SUM(s.total_amount), 0)', 'rev')
-      .where('DATE(s.created_at) >= :from', { from: from30 })
-      .andWhere('DATE(s.created_at) <= :to', { to: today })
+      .where('s.created_at >= :startTs', { startTs: start30 })
+      .andWhere('s.created_at <= :endTs', { endTs: endToday })
       .groupBy('DATE(s.created_at)')
       .orderBy('d', 'ASC')
       .getRawMany<{ d: Date | string; cnt: string | number; rev: string | number }>();

@@ -12,6 +12,10 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { normalizeClubRole } from '../shared/domain/club/club-roles';
+import {
+  buildPageMeta,
+  paginationSkip,
+} from '../shared/dto/paginated-meta';
 import { toIsoDateOnly } from '../shared/domain/shared/iso-date';
 import {
   PASSWORD_HASHER,
@@ -94,21 +98,29 @@ export class StaffService {
     };
   }
 
-  async listForUser(actor: {
-    userId: number;
-    role_name: string;
-  }): Promise<{
+  async listForUser(
+    actor: { userId: number; role_name: string },
+    page = 1,
+    pageSize = 25,
+    q?: string,
+  ): Promise<{
     staff: StaffListRow[];
     meta: {
       can_manage: boolean;
-      /** Solo administrador puede crear/editar/borrar personal. */
       is_administrator: boolean;
+      page: number;
+      pageSize: number;
+      total: number;
+      pageCount: number;
     };
   }> {
     const ar = normalizeClubRole(actor.role_name);
     if (ar !== 'administrator' && ar !== 'staff_member') {
       throw new ForbiddenException('Sin acceso al listado de personal.');
     }
+
+    const ps = Math.min(100, Math.max(1, pageSize));
+    const pg = Math.max(1, page);
 
     const qb = this.members
       .createQueryBuilder('m')
@@ -128,8 +140,22 @@ export class StaffService {
     if (ar === 'staff_member') {
       qb.andWhere('m.id = :uid', { uid: actor.userId });
     }
+    const qTrim = q?.trim();
+    if (qTrim) {
+      const like = `%${qTrim.replace(/[%_\\]/g, '\\$&')}%`;
+      qb.andWhere(
+        `(LOWER(CONCAT(COALESCE(m.first_name,''), ' ', COALESCE(m.last_name,''))) LIKE LOWER(:like)
+          OR LOWER(COALESCE(m.email,'')) LIKE LOWER(:like)
+          OR CAST(m.id AS CHAR) LIKE :like)`,
+        { like },
+      );
+    }
 
-    const entities = await qb.getMany();
+    const total = await qb.clone().getCount();
+    const entities = await qb
+      .offset(paginationSkip(pg, ps))
+      .limit(ps)
+      .getMany();
     const roleIds = [
       ...new Set(
         entities.map((m) => m.role).filter((x): x is number => x != null),
@@ -154,11 +180,13 @@ export class StaffService {
         m.role != null ? roleNames.get(m.role) ?? null : null,
     }));
 
+    const pageMeta = buildPageMeta(total, pg, ps);
     return {
       staff,
       meta: {
         can_manage: ar === 'administrator',
         is_administrator: ar === 'administrator',
+        ...pageMeta,
       },
     };
   }

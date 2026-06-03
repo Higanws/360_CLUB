@@ -1,11 +1,19 @@
 import axios from 'axios';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import { MmSearchField } from '../../components/ui/MmSearchField';
+import { MmSelect } from '../../components/ui/MmSelect';
 import { routes } from '../../config/member-management';
 import { memberPortalRoutes } from '../../config/member-portal';
 import { api } from '../../lib/api';
 import { MmTableActions } from '../../components/mm/MmTableActions';
+import {
+  DEFAULT_PAGE_SIZE,
+  pageRangeLabel,
+} from '../../lib/pagination';
+import { useDebouncedValue } from '../../hooks/useDebouncedValue';
+import { useTrainingAssignmentsList } from '../../lib/queries/lists';
 import { useAuth } from '../../context/AuthContext';
 
 type Row = {
@@ -18,8 +26,6 @@ type Row = {
   created_at: string;
 };
 
-const PAGE_SIZE = 10;
-
 function formatNames(names: string[]): string {
   if (!names.length) return '—';
   if (names.length <= 2) return names.join(', ');
@@ -29,10 +35,24 @@ function formatNames(names: string[]): string {
 export function TrainingAssignmentsListPage() {
   const { user, loading } = useAuth();
   const navigate = useNavigate();
-  const [rows, setRows] = useState<Row[]>([]);
+  const queryClient = useQueryClient();
   const [error, setError] = useState<string | null>(null);
   const [filterQuery, setFilterQuery] = useState('');
-  const [page, setPage] = useState(0);
+  const debouncedQuery = useDebouncedValue(filterQuery, 300);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
+
+  const enabled = !!user;
+  const { data, isFetching, isError, error: queryError } =
+    useTrainingAssignmentsList(page, pageSize, debouncedQuery, enabled);
+
+  const rows = (data?.assignments ?? []).map((r) => ({
+    ...(r as Row),
+    member_ids: Array.isArray((r as Row).member_ids)
+      ? (r as Row).member_ids
+      : [],
+  }));
+  const meta = data?.meta ?? null;
 
   useEffect(() => {
     if (!loading && !user) navigate('/login', { replace: true });
@@ -41,71 +61,39 @@ export function TrainingAssignmentsListPage() {
   useEffect(() => {
     if (!user) return;
     const r = user.role_name?.trim().toLowerCase() ?? '';
-    if (r === 'member') {
-      navigate(memberPortalRoutes.wellness, { replace: true });
-      return;
-    }
-    api
-      .get<Row[]>('/training-assignments')
-      .then(({ data }) => {
-        setRows(
-          (data ?? []).map((r) => ({
-            ...r,
-            member_ids: Array.isArray(r.member_ids) ? r.member_ids : [],
-          })),
-        );
-        setError(null);
-      })
-      .catch((e: unknown) => {
-        if (axios.isAxiosError(e) && e.response?.status === 403) {
-          navigate(memberPortalRoutes.wellness, { replace: true });
-          return;
-        }
-        setError('No se pudo cargar las asignaciones.');
-      });
+    if (r === 'member') navigate(memberPortalRoutes.wellness, { replace: true });
   }, [user, navigate]);
 
-  const filtered = useMemo(() => {
-    const raw = filterQuery.trim();
-    if (!raw) return rows;
-    const q = raw.toLowerCase();
-    return rows.filter((r) => {
-      const memberNamesBlob = r.member_names.join(' ').toLowerCase();
-      const trainerBlob = r.trainer_names.join(' ').toLowerCase();
-      const routine = (r.routine_title ?? '').toLowerCase();
-      const idMatch = r.member_ids.some((id) => String(id).includes(raw));
-      return (
-        memberNamesBlob.includes(q) ||
-        idMatch ||
-        trainerBlob.includes(q) ||
-        routine.includes(q)
-      );
-    });
-  }, [rows, filterQuery]);
+  useEffect(() => {
+    if (isError) {
+      if (axios.isAxiosError(queryError) && queryError.response?.status === 403) {
+        navigate(memberPortalRoutes.wellness, { replace: true });
+        return;
+      }
+      setError('No se pudo cargar las asignaciones.');
+    } else {
+      setError(null);
+    }
+  }, [isError, queryError, navigate]);
 
-  const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const pageSafe = Math.min(page, pageCount - 1);
-  const slice = filtered.slice(
-    pageSafe * PAGE_SIZE,
-    pageSafe * PAGE_SIZE + PAGE_SIZE,
-  );
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedQuery]);
 
   async function handleDelete(id: number) {
     if (!confirm('¿Eliminar esta asignación?')) return;
     try {
       await api.delete(`/training-assignments/${id}`);
-      const { data } = await api.get<Row[]>('/training-assignments');
-      setRows(
-        (data ?? []).map((r) => ({
-          ...r,
-          member_ids: Array.isArray(r.member_ids) ? r.member_ids : [],
-        })),
-      );
+      await queryClient.invalidateQueries({
+        queryKey: ['training-assignments', 'list'],
+      });
       setError(null);
     } catch {
       setError('No se pudo eliminar la asignación.');
     }
   }
+
+  const showPager = meta && meta.pageCount > 1;
 
   if (loading || !user) {
     return (
@@ -144,14 +132,57 @@ export function TrainingAssignmentsListPage() {
           grow
           label="Filtrar por socio o entrenador"
           value={filterQuery}
-          onChange={(e) => {
-            setFilterQuery(e.target.value);
-            setPage(0);
-          }}
+          onChange={(e) => setFilterQuery(e.target.value)}
           placeholder="Socio, ID de socio, entrenador o título de rutina…"
           autoComplete="off"
         />
       </div>
+
+      {meta ? (
+        <p className="muted small pay-footer-note">{pageRangeLabel(meta)}</p>
+      ) : null}
+
+      {showPager ? (
+        <div className="members-toolbar members-pagination-toolbar">
+          <div className="members-pagination">
+            <button
+              type="button"
+              className="btn-outline"
+              disabled={page <= 1 || isFetching}
+              onClick={() => setPage((p) => p - 1)}
+            >
+              Anterior
+            </button>
+            <span className="muted small members-pagination-status">
+              Página {meta!.page} de {meta!.pageCount}
+            </span>
+            <button
+              type="button"
+              className="btn-outline"
+              disabled={page >= meta!.pageCount || isFetching}
+              onClick={() => setPage((p) => p + 1)}
+            >
+              Siguiente
+            </button>
+          </div>
+          <label className="members-page-size">
+            <span className="muted small">Por página</span>
+            <MmSelect
+              value={String(pageSize)}
+              disabled={isFetching}
+              onValueChange={(v) => {
+                setPageSize(Number(v));
+                setPage(1);
+              }}
+              options={[
+                { value: '25', label: '25' },
+                { value: '50', label: '50' },
+                { value: '100', label: '100' },
+              ]}
+            />
+          </label>
+        </div>
+      ) : null}
 
       <section className="members-panel mm-data-panel">
         <div className="members-table-wrap">
@@ -165,15 +196,16 @@ export function TrainingAssignmentsListPage() {
               </tr>
             </thead>
             <tbody>
-              {slice.length === 0 ? (
+              {rows.length === 0 ? (
                 <tr>
                   <td colSpan={4} className="pay-table-empty">
-                    No hay asignaciones. Crea rutinas en «Crear entrenamiento» y
-                    luego vincúlalas aquí.
+                    {isFetching
+                      ? 'Cargando…'
+                      : 'No hay asignaciones. Crea rutinas en «Crear entrenamiento» y luego vincúlalas aquí.'}
                   </td>
                 </tr>
               ) : (
-                slice.map((row) => (
+                rows.map((row) => (
                   <tr key={row.id}>
                     <td>{row.routine_title}</td>
                     <td>{formatNames(row.member_names)}</td>
@@ -194,36 +226,6 @@ export function TrainingAssignmentsListPage() {
           </table>
         </div>
       </section>
-
-      {filtered.length > PAGE_SIZE ? (
-        <footer className="pay-pagination">
-          <button
-            type="button"
-            className="btn-outline"
-            disabled={pageSafe <= 0}
-            onClick={() => setPage((p) => Math.max(0, p - 1))}
-          >
-            Anterior
-          </button>
-          <span className="muted">
-            Página {pageSafe + 1} de {pageCount} ({filtered.length} entradas)
-          </span>
-          <button
-            type="button"
-            className="btn-outline"
-            disabled={pageSafe >= pageCount - 1}
-            onClick={() => setPage((p) => Math.min(pageCount - 1, p + 1))}
-          >
-            Siguiente
-          </button>
-        </footer>
-      ) : (
-        <p className="muted pay-footer-note">
-          {filtered.length === 0
-            ? ''
-            : `Mostrando ${filtered.length} entrada(s).`}
-        </p>
-      )}
     </div>
   );
 }

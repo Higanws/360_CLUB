@@ -1,11 +1,16 @@
-import axios from 'axios';
-import { useEffect, useMemo, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { MmSearchField } from '../components/ui/MmSearchField';
+import { MmSelect } from '../components/ui/MmSelect';
 import { routes } from '../config/member-management';
 import { memberPortalRoutes } from '../config/member-portal';
 import { api } from '../lib/api';
 import { formatMoney } from '../lib/format-money';
+import {
+  DEFAULT_PAGE_SIZE,
+  pageRangeLabel,
+} from '../lib/pagination';
+import { useMembershipPaymentsList } from '../lib/queries/lists';
 import { useAuth } from '../context/AuthContext';
 
 type Row = {
@@ -23,37 +28,19 @@ type Row = {
   membership_status: string | null;
 };
 
-type Payload = {
-  title: string;
-  subtitle: string;
-  rows: Row[];
-};
-
-const PAGE_SIZE = 10;
-
-function formatDisplayDate(iso: string | null): string {
-  if (!iso) return '—';
-  const [y, m, d] = iso.split('-').map((x) => parseInt(x, 10));
-  if (!y || !m || !d) return iso;
-  try {
-    return new Date(y, m - 1, d).toLocaleDateString('es-ES', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-    });
-  } catch {
-    return iso;
-  }
-}
 
 export function MembershipPaymentsPage() {
   const { user, loading } = useAuth();
   const navigate = useNavigate();
-  const [data, setData] = useState<Payload | null>(null);
+  const queryClient = useQueryClient();
   const [error, setError] = useState<string | null>(null);
-  const [search, setSearch] = useState('');
-  const [page, setPage] = useState(0);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [busyId, setBusyId] = useState<number | null>(null);
+
+  const { data, isLoading, isError } = useMembershipPaymentsList(page, pageSize);
+  const rows = (data?.rows ?? []) as Row[];
+  const meta = data?.meta;
 
   useEffect(() => {
     if (!loading && !user) navigate('/login', { replace: true });
@@ -62,53 +49,43 @@ export function MembershipPaymentsPage() {
   useEffect(() => {
     if (!user) return;
     const r = user.role_name?.trim().toLowerCase() ?? '';
-    if (r === 'member') {
-      navigate(memberPortalRoutes.wellness, { replace: true });
-      return;
-    }
-    api
-      .get<Payload>('/payments/membership/expiring-this-month')
-      .then(({ data: d }) => setData(d))
-      .catch((e: unknown) => {
-        if (axios.isAxiosError(e) && e.response?.status === 403) {
-          navigate(memberPortalRoutes.wellness, { replace: true });
-          return;
-        }
-        setError('No se pudo cargar los cobros.');
-      });
+    if (r === 'member') navigate(memberPortalRoutes.wellness, { replace: true });
   }, [user, navigate]);
 
-  const filtered = useMemo(() => {
-    const rows = data?.rows ?? [];
-    const q = search.trim().toLowerCase();
-    if (!q) return rows;
-    return rows.filter(
-      (r) =>
-        r.member_name.toLowerCase().includes(q) ||
-        (r.membership_label ?? '').toLowerCase().includes(q),
-    );
-  }, [data?.rows, search]);
-
-  const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const pageSafe = Math.min(page, pageCount - 1);
-  const slice = filtered.slice(
-    pageSafe * PAGE_SIZE,
-    pageSafe * PAGE_SIZE + PAGE_SIZE,
-  );
+  useEffect(() => {
+    if (isError) setError('No se pudo cargar los cobros.');
+    else setError(null);
+  }, [isError]);
 
   async function handlePay(mpId: number) {
     setBusyId(mpId);
     setError(null);
     try {
       await api.patch(`/payments/membership/${mpId}/paid`);
-      const { data: d } = await api.get<Payload>(
-        '/payments/membership/expiring-this-month',
-      );
-      setData(d);
+      await queryClient.invalidateQueries({
+        queryKey: ['membership-payments', 'expiring'],
+      });
     } catch {
       setError('No se pudo registrar el cobro.');
     } finally {
       setBusyId(null);
+    }
+  }
+
+  const showPager = meta && meta.pageCount > 1;
+
+  function formatDisplayDate(iso: string | null): string {
+    if (!iso) return '—';
+    const [y, m, d] = iso.split('-').map((x) => parseInt(x, 10));
+    if (!y || !m || !d) return iso;
+    try {
+      return new Date(y, m - 1, d).toLocaleDateString('es-ES', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+      });
+    } catch {
+      return iso;
     }
   }
 
@@ -141,19 +118,49 @@ export function MembershipPaymentsPage() {
       </header>
 
       {error ? <p className="login-error">{error}</p> : null}
+      {meta ? (
+        <p className="muted small pay-footer-note">{pageRangeLabel(meta)}</p>
+      ) : null}
 
-      <div className="pay-toolbar">
-        <span className="muted">Mostrar entradas</span>
-        <MmSearchField
-          label="Buscar:"
-          value={search}
-          onChange={(e) => {
-            setSearch(e.target.value);
-            setPage(0);
-          }}
-          placeholder="Nombre o plan"
-        />
-      </div>
+      {showPager ? (
+        <footer className="pay-pagination">
+          <button
+            type="button"
+            className="btn-outline"
+            disabled={page <= 1 || isLoading}
+            onClick={() => setPage((p) => p - 1)}
+          >
+            Anterior
+          </button>
+          <span className="muted">
+            Página {meta!.page} de {meta!.pageCount}
+          </span>
+          <button
+            type="button"
+            className="btn-outline"
+            disabled={page >= meta!.pageCount || isLoading}
+            onClick={() => setPage((p) => p + 1)}
+          >
+            Siguiente
+          </button>
+          <label className="members-page-size">
+            <span className="muted small">Por página</span>
+            <MmSelect
+              value={String(pageSize)}
+              disabled={isLoading}
+              onValueChange={(v) => {
+                setPageSize(Number(v));
+                setPage(1);
+              }}
+              options={[
+                { value: '25', label: '25' },
+                { value: '50', label: '50' },
+                { value: '100', label: '100' },
+              ]}
+            />
+          </label>
+        </footer>
+      ) : null}
 
       <section className="pay-table-wrap">
         <table className="pay-table">
@@ -171,14 +178,16 @@ export function MembershipPaymentsPage() {
             </tr>
           </thead>
           <tbody>
-            {slice.length === 0 ? (
+            {rows.length === 0 ? (
               <tr>
                 <td colSpan={9} className="pay-table-empty">
-                  No hay registros de cobro con vencimiento este mes.
+                  {isLoading
+                    ? 'Cargando…'
+                    : 'No hay registros de cobro con vencimiento este mes.'}
                 </td>
               </tr>
             ) : (
-              slice.map((row) => {
+              rows.map((row) => {
                 const isPaid =
                   row.payment_status === '1' ||
                   row.paid_amount >= row.membership_amount;
@@ -230,36 +239,6 @@ export function MembershipPaymentsPage() {
           </tbody>
         </table>
       </section>
-
-      {filtered.length > PAGE_SIZE ? (
-        <footer className="pay-pagination">
-          <button
-            type="button"
-            className="btn-outline"
-            disabled={pageSafe <= 0}
-            onClick={() => setPage((p) => Math.max(0, p - 1))}
-          >
-            Anterior
-          </button>
-          <span className="muted">
-            Página {pageSafe + 1} de {pageCount} ({filtered.length} entradas)
-          </span>
-          <button
-            type="button"
-            className="btn-outline"
-            disabled={pageSafe >= pageCount - 1}
-            onClick={() => setPage((p) => Math.min(pageCount - 1, p + 1))}
-          >
-            Siguiente
-          </button>
-        </footer>
-      ) : (
-        <p className="muted pay-footer-note">
-          {filtered.length === 0
-            ? ''
-            : `Mostrando ${filtered.length} entrada(s).`}
-        </p>
-      )}
     </div>
   );
 }

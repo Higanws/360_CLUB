@@ -89,8 +89,10 @@ export function TrainingRoutineFormPage({ mode }: { mode: Mode }) {
   useEffect(() => {
     if (!user) return;
     api
-      .get<ActivityRow[]>('/activities')
-      .then(({ data }) => setCatalog(data))
+      .get<{ activities: ActivityRow[] }>('/activities', {
+        params: { page: 1, pageSize: 500 },
+      })
+      .then(({ data }) => setCatalog(data.activities ?? []))
       .catch(() => setCatalog([]));
   }, [user]);
 

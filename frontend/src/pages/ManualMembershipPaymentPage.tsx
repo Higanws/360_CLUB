@@ -1,6 +1,7 @@
 import { type FormEvent, useEffect, useMemo, useState } from 'react';
 import { bindDateRange } from '../lib/date-range';
 import { Link, useNavigate } from 'react-router-dom';
+import { MmCombobox } from '../components/ui/MmCombobox';
 import { MmDatePicker } from '../components/ui/MmDatePicker';
 import { MmSelect } from '../components/ui/MmSelect';
 import { routes } from '../config/member-management';
@@ -8,21 +9,26 @@ import { memberPortalRoutes } from '../config/member-portal';
 import { api } from '../lib/api';
 import { extractApiMessage } from '../lib/extract-api-message';
 import { currencySymbol } from '../lib/format-money';
+import { useDebouncedValue } from '../hooks/useDebouncedValue';
+
 import { useAuth } from '../context/AuthContext';
 
-type Options = {
-  members: { id: number; label: string }[];
-  memberships: {
-    id: number;
-    label: string | null;
-    amount: number | null;
-  }[];
+type MembershipPlanOption = {
+  id: number;
+  label: string | null;
+  amount: number | null;
 };
 
 export function ManualMembershipPaymentPage() {
   const { user, loading } = useAuth();
   const navigate = useNavigate();
-  const [options, setOptions] = useState<Options | null>(null);
+  const [memberships, setMemberships] = useState<MembershipPlanOption[]>([]);
+  const [memberSearch, setMemberSearch] = useState('');
+  const [memberOptions, setMemberOptions] = useState<
+    Array<{ id: number; label: string }>
+  >([]);
+  const [selectedMemberLabel, setSelectedMemberLabel] = useState('');
+  const debouncedMemberSearch = useDebouncedValue(memberSearch, 300);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -51,20 +57,56 @@ export function ManualMembershipPaymentPage() {
   useEffect(() => {
     if (!user) return;
     api
-      .get<Options>('/payments/membership/form-options')
-      .then(({ data }) => setOptions(data))
+      .get<{ members: unknown[]; memberships: MembershipPlanOption[] }>(
+        '/payments/membership/form-options',
+      )
+      .then(({ data }) => setMemberships(data.memberships ?? []))
       .catch((e) =>
         setError(extractApiMessage(e) || 'No se pudieron cargar las opciones.'),
       );
   }, [user]);
 
   useEffect(() => {
-    if (!membershipId || !options) return;
+    if (!user) return;
+    const q = debouncedMemberSearch.trim();
+    if (q.length < 2) {
+      setMemberOptions([]);
+      return;
+    }
+    let cancelled = false;
+    api
+      .get<{ members: Array<{ id: number; label: string }> }>(
+        '/payments/membership/form-options',
+        { params: { q, limit: 20 } },
+      )
+      .then(({ data }) => {
+        if (!cancelled) setMemberOptions(data.members ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) setMemberOptions([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [user, debouncedMemberSearch]);
+
+  useEffect(() => {
+    if (!membershipId || !memberships.length) return;
     const id = parseInt(membershipId, 10);
-    const plan = options.memberships.find((p) => p.id === id);
+    const plan = memberships.find((p) => p.id === id);
     if (plan?.amount != null) setTotalInput(String(plan.amount));
     else setTotalInput('');
-  }, [membershipId, options]);
+  }, [membershipId, memberships]);
+
+  const memberComboboxOptions = memberOptions.map((m) => ({
+    value: String(m.id),
+    label: m.label || `Socio ${m.id}`,
+  }));
+
+  const membershipSelectOptions = memberships.map((p) => ({
+    value: String(p.id),
+    label: p.label || `Plan ${p.id}`,
+  }));
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -146,16 +188,45 @@ export function ManualMembershipPaymentPage() {
             <span className="pay-manual-label">
               Miembro <span className="pay-req">*</span>
             </span>
-            <MmSelect
-              required
-              value={memberId}
-              onValueChange={setMemberId}
-              options={(options?.members ?? []).map((m) => ({
-                value: String(m.id),
-                label: m.label || `Socio ${m.id}`,
-              }))}
-              placeholder="Seleccione miembro"
-            />
+            {memberId ? (
+              <p className="muted small" style={{ margin: '0 0 0.35rem' }}>
+                Seleccionado:{' '}
+                <strong>{selectedMemberLabel || `Socio ${memberId}`}</strong>{' '}
+                <button
+                  type="button"
+                  className="btn-outline"
+                  style={{ marginLeft: '0.5rem' }}
+                  onClick={() => {
+                    setMemberId('');
+                    setSelectedMemberLabel('');
+                  }}
+                >
+                  Cambiar
+                </button>
+              </p>
+            ) : (
+              <MmCombobox
+                query={memberSearch}
+                onQueryChange={setMemberSearch}
+                options={memberComboboxOptions}
+                onSelect={(v) => {
+                  const hit = memberOptions.find(
+                    (m) => String(m.id) === v,
+                  );
+                  setMemberId(v);
+                  setSelectedMemberLabel(hit?.label ?? '');
+                  setMemberSearch('');
+                  setMemberOptions([]);
+                }}
+                placeholder="Buscar socio (mín. 2 caracteres)…"
+                emptyMessage={
+                  memberSearch.trim().length < 2
+                    ? 'Escribe al menos 2 caracteres.'
+                    : 'Ningún socio coincide.'
+                }
+                aria-label="Buscar socio"
+              />
+            )}
           </label>
 
           <label className="pay-manual-row">
@@ -166,10 +237,7 @@ export function ManualMembershipPaymentPage() {
               required
               value={membershipId}
               onValueChange={setMembershipId}
-              options={(options?.memberships ?? []).map((p) => ({
-                value: String(p.id),
-                label: p.label ?? `Plan ${p.id}`,
-              }))}
+              options={membershipSelectOptions}
               placeholder="Seleccione membresía"
             />
           </label>

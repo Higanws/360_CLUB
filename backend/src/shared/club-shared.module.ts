@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { GeneralSetting } from '../entities/general-setting.entity';
 import { GymMember } from '../entities/gym-member.entity';
 import { GetClubBrandingUseCase } from './application/club/get-club-branding.use-case';
+import { DashboardCacheService } from './cache/dashboard-cache.service';
 import { GYM_MEMBER_READ } from './application/ports/gym-member-read.port';
 import { GENERAL_SETTINGS } from './application/ports/general-settings.port';
 import { PASSWORD_HASHER } from './application/ports/password-hasher.port';
@@ -28,12 +29,14 @@ import { TypeOrmGeneralSettingsRepository } from './infrastructure/persistence/t
     },
     { provide: PASSWORD_HASHER, useExisting: BcryptPasswordHasher },
     GetClubBrandingUseCase,
+    DashboardCacheService,
   ],
   exports: [
     GYM_MEMBER_READ,
     GENERAL_SETTINGS,
     PASSWORD_HASHER,
     GetClubBrandingUseCase,
+    DashboardCacheService,
     TypeOrmGymMemberReadRepository,
   ],
 })

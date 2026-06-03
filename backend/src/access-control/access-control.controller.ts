@@ -22,10 +22,11 @@ export class AccessControlController {
 
   @Get('recent')
   recent(@Req() req: JwtReq, @Query() q: RecentAccessLogsQueryDto) {
-    const limit = q.limit ?? 100;
+    const pageSize = q.pageSize ?? q.limit ?? 25;
     return this.access.recentLogs(
       req.user,
-      limit,
+      q.page ?? 1,
+      pageSize,
       q.from?.trim(),
       q.to?.trim(),
     );

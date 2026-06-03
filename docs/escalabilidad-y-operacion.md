@@ -2,16 +2,47 @@
 
 Este documento resume **mejoras recomendadas** que no forman parte del MVP actual, y cómo aplicar **índices** en bases de datos ya existentes.
 
-## Paginación de socios (implementado)
+## Paginación (implementado)
 
-- **API:** `GET /api/members?page=1&pageSize=25` (máximo `pageSize=500`).
-- **Respuesta:** `meta.total`, `meta.page`, `meta.pageSize`, `meta.pageCount`.
-- **Front:** la lista principal de socios usa paginación; los desplegables que necesitan todos los socios llaman a `fetchAllMembersLiteRows()` en `frontend/src/lib/members-api.ts` (varias páginas automáticas).
+Contrato compartido: `backend/src/shared/dto/pagination-query.dto.ts`, `paginated-meta.ts` y `frontend/src/lib/pagination.ts`.
+
+| Endpoint | Parámetros | Respuesta |
+|----------|------------|-----------|
+| `GET /api/members` | `page`, `pageSize` (máx. 500) | `{ members, meta }` |
+| `GET /api/members/search` | `q`, `limit` | `{ members, total }` — comboboxes (mín. 2 chars en UI) |
+| `GET /api/pos/sales` | `from`, `to`, `page`, `pageSize` | `{ sales, meta }` |
+| `GET /api/access-control/recent` | `from`, `to`, `page`, `pageSize` | `{ logs, meta }` |
+| `GET /api/nutrition/overview` | `page`, `pageSize`, `q?` | `{ rows, meta }` — `meal_count` vía `JSON_LENGTH`, sin cargar JSON |
+| `GET /api/training-assignments` | `page`, `pageSize`, `q?` | `{ assignments, meta }` |
+| `GET /api/activities` | `page`, `pageSize` | `{ activities, meta }` |
+| `GET /api/training-routines` | `page`, `pageSize` | `{ routines, meta }` |
+| `GET /api/staff` | `page`, `pageSize` | `{ staff, meta }` |
+| `GET /api/payments/membership/expiring-this-month` | `page`, `pageSize` | `{ rows, meta, title, subtitle }` |
+| `GET /api/payments/membership/form-options` | `q?`, `limit?` | socios solo con `q`; planes siempre |
+
+- **Front:** comboboxes usan `searchMembersLite()`; listados con paginación UI; React Query en socios, dashboard, staff, actividades, rutinas, cobros.
+- **Export CSV POS:** `GET /api/pos/sales/export` — listado completo del rango (máx. 90 días).
+
+## Caché
+
+- **In-memory / Redis:** `CacheModule` global; `REDIS_URL` en Docker (`redis://redis:6379`).
+- Dashboard métricas: TTL 120 s (`dashboard:business-metrics`).
+- Branding login: TTL 300 s (`settings:club-branding`).
+- Fallback in-memory si Redis no está disponible.
+
+## Índices adicionales
+
+En `schema_mysql.sql` y migración `backend/database/migrations/add-performance-indexes.sql`:
+
+| Índice | Tabla | Uso |
+|--------|-------|-----|
+| `idx_membership_payment_end_date` | `membership_payment` | Cobros del mes |
+| `idx_club_access_log_date_outcome` | `club_access_log` | Dashboard + registro accesos |
+| `idx_pos_sale_created` | `pos_sale` | Ventas (ya existía); consultas por rango datetime |
 
 ### Próximos listados candidatos a paginar
 
-- Planes de membresía, cobros, productos POS, actividades, rutinas, asignaciones, etc., si crecen mucho.
-- Añadir **búsqueda server-side** (por nombre, DNI, usuario) en el listado de socios cuando haga falta.
+- Planes de membresía (baja prioridad, catálogo pequeño).
 
 ## Índices en `gym_member`
 

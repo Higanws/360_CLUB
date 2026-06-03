@@ -16,6 +16,10 @@ import {
 import { CreateTrainingRoutineDto } from './dto/create-training-routine.dto';
 import { UpdateTrainingRoutineDto } from './dto/update-training-routine.dto';
 import type { TrainingRoutineLineDto } from './dto/training-routine-line.dto';
+import {
+  buildPageMeta,
+  paginationSkip,
+} from '../shared/dto/paginated-meta';
 
 type NormalizedLine = {
   activity_id: number;
@@ -34,22 +38,62 @@ export class TrainingRoutinesService {
     private readonly activities: Repository<Activity>,
   ) {}
 
-  async list() {
+  async list(page = 1, pageSize = 25, q?: string) {
+    const ps = Math.min(100, Math.max(1, pageSize));
+    const pg = Math.max(1, page);
+
+    const idQb = this.routines
+      .createQueryBuilder('r')
+      .select('r.id', 'id')
+      .orderBy('r.id', 'DESC');
+    const qTrim = q?.trim();
+    if (qTrim) {
+      const like = `%${qTrim.replace(/[%_\\]/g, '\\$&')}%`;
+      idQb.andWhere('r.title LIKE :like', { like });
+    }
+
+    const total = await idQb.clone().getCount();
+    const idRows = await idQb
+      .offset(paginationSkip(pg, ps))
+      .limit(ps)
+      .getRawMany<{ id: number }>();
+    const ids = idRows.map((r) => Number(r.id)).filter((id) => id > 0);
+    if (!ids.length) {
+      return { routines: [], meta: buildPageMeta(total, pg, ps) };
+    }
+
     const rows = await this.routines.find({
-      relations: ['lines'],
+      where: { id: In(ids) },
       order: { id: 'DESC' },
     });
-    return rows.map((r) => ({
-      id: r.id,
-      title: r.title,
-      description: r.description,
-      difficulty_level: normalizeRoutineDifficulty(r.difficulty_level),
-      exercise_count: r.lines?.length ?? 0,
-      created_at:
-        r.created_at instanceof Date
-          ? r.created_at.toISOString()
-          : String(r.created_at),
-    }));
+    const lineCounts = await this.lines
+      .createQueryBuilder('l')
+      .select('l.routine_id', 'routine_id')
+      .addSelect('COUNT(l.id)', 'cnt')
+      .where('l.routine_id IN (:...ids)', { ids })
+      .groupBy('l.routine_id')
+      .getRawMany<{ routine_id: number; cnt: string | number }>();
+    const countByRoutine = new Map(
+      lineCounts.map((r) => [Number(r.routine_id), Number(r.cnt)]),
+    );
+
+    const byId = new Map(rows.map((r) => [r.id, r]));
+    const routines = ids
+      .map((id) => byId.get(id))
+      .filter((r): r is TrainingRoutine => r != null)
+      .map((r) => ({
+        id: r.id,
+        title: r.title,
+        description: r.description,
+        difficulty_level: normalizeRoutineDifficulty(r.difficulty_level),
+        exercise_count: countByRoutine.get(r.id) ?? 0,
+        created_at:
+          r.created_at instanceof Date
+            ? r.created_at.toISOString()
+            : String(r.created_at),
+      }));
+
+    return { routines, meta: buildPageMeta(total, pg, ps) };
   }
 
   async getOne(id: number) {

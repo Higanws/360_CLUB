@@ -7,11 +7,13 @@ import {
   ParseIntPipe,
   Patch,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { BusinessRoleGuard } from '../members/business-role.guard';
 import { BusinessRoles } from '../members/roles.decorator';
+import { PaginationQueryDto } from '../shared/dto/pagination-query.dto';
 import { CreateTrainingRoutineDto } from './dto/create-training-routine.dto';
 import { UpdateTrainingRoutineDto } from './dto/update-training-routine.dto';
 import { TrainingRoutinesService } from './training-routines.service';
@@ -23,8 +25,8 @@ export class TrainingRoutinesController {
   constructor(private readonly routines: TrainingRoutinesService) {}
 
   @Get()
-  list() {
-    return this.routines.list();
+  list(@Query() q: PaginationQueryDto) {
+    return this.routines.list(q.page ?? 1, q.pageSize ?? 25);
   }
 
   @Get(':id')

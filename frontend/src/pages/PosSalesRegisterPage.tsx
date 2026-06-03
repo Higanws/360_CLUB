@@ -9,7 +9,13 @@ import { posPaymentLabel } from '../lib/pos-payment';
 import { extractApiMessage } from '../lib/extract-api-message';
 import { formatMoney } from '../lib/format-money';
 import { MmDatePicker } from '../components/ui/MmDatePicker';
+import { MmSelect } from '../components/ui/MmSelect';
 import { useAuth } from '../context/AuthContext';
+import {
+  DEFAULT_PAGE_SIZE,
+  pageRangeLabel,
+} from '../lib/pagination';
+import { usePosSalesList } from '../lib/queries/lists';
 
 type SaleRow = {
   id: number;
@@ -33,8 +39,7 @@ function startOfMonth(d: Date): Date {
 
 function formatWhen(iso: string): string {
   try {
-    const d = new Date(iso);
-    return d.toLocaleString('es-ES');
+    return new Date(iso).toLocaleString('es-ES');
   } catch {
     return iso;
   }
@@ -43,12 +48,27 @@ function formatWhen(iso: string): string {
 export function PosSalesRegisterPage() {
   const { user, loading } = useAuth();
   const navigate = useNavigate();
-  const [from, setFrom] = useState(() => fmtLocalDate(startOfMonth(new Date())));
-  const [to, setTo] = useState(() => fmtLocalDate(new Date()));
-  const [rows, setRows] = useState<SaleRow[]>([]);
+  const initialFrom = fmtLocalDate(startOfMonth(new Date()));
+  const initialTo = fmtLocalDate(new Date());
+  const [from, setFrom] = useState(initialFrom);
+  const [to, setTo] = useState(initialTo);
+  const [applied, setApplied] = useState({ from: initialFrom, to: initialTo });
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [error, setError] = useState<string | null>(null);
-  const [loadingSales, setLoadingSales] = useState(false);
   const [exporting, setExporting] = useState(false);
+
+  const metricsEnabled = !!user;
+  const { data, isFetching, isError, error: queryError } = usePosSalesList(
+    applied.from,
+    applied.to,
+    page,
+    pageSize,
+    metricsEnabled,
+  );
+
+  const rows = (data?.sales ?? []) as SaleRow[];
+  const meta = data?.meta ?? null;
 
   const salesRange = useMemo(
     () => bindDateRange(from, to, setFrom, setTo),
@@ -65,32 +85,24 @@ export function PosSalesRegisterPage() {
     if (r === 'member') navigate(memberPortalRoutes.wellness, { replace: true });
   }, [user, navigate]);
 
-  async function loadSales() {
-    setError(null);
-    setLoadingSales(true);
-    try {
-      const { data } = await api.get<SaleRow[]>('/pos/sales', {
-        params: { from, to },
-      });
-      setRows(Array.isArray(data) ? data : []);
-    } catch (e: unknown) {
-      if (axios.isAxiosError(e) && e.response?.status === 400) {
-        setError(extractApiMessage(e) ?? 'Revisa el rango de fechas.');
+  useEffect(() => {
+    if (isError) {
+      if (axios.isAxiosError(queryError) && queryError.response?.status === 400) {
+        setError(extractApiMessage(queryError) ?? 'Revisa el rango de fechas.');
       } else {
-        setError(extractApiMessage(e) ?? 'No se pudieron cargar las ventas.');
+        setError(extractApiMessage(queryError) ?? 'No se pudieron cargar las ventas.');
       }
-      setRows([]);
-    } finally {
-      setLoadingSales(false);
+    } else {
+      setError(null);
     }
+  }, [isError, queryError]);
+
+  function consult() {
+    setApplied({ from, to });
+    setPage(1);
   }
 
-  useEffect(() => {
-    if (!user) return;
-    void loadSales();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- recarga al cambiar rango con botón o montaje
-  }, [user]);
-
+  const showPager = meta && meta.pageCount > 1;
   const totalPeriod = useMemo(
     () => rows.reduce((s, r) => s + Number(r.total_amount), 0),
     [rows],
@@ -101,7 +113,7 @@ export function PosSalesRegisterPage() {
     setExporting(true);
     try {
       const res = await api.get<Blob>('/pos/sales/export', {
-        params: { from, to },
+        params: { from: applied.from, to: applied.to },
         responseType: 'blob',
       });
       const blob =
@@ -113,7 +125,7 @@ export function PosSalesRegisterPage() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `ventas_${from}_${to}.csv`;
+      a.download = `ventas_${applied.from}_${applied.to}.csv`;
       a.rel = 'noopener';
       document.body.appendChild(a);
       a.click();
@@ -183,10 +195,10 @@ export function PosSalesRegisterPage() {
           <button
             type="button"
             className="btn-primary"
-            disabled={loadingSales}
-            onClick={() => void loadSales()}
+            disabled={isFetching}
+            onClick={consult}
           >
-            {loadingSales ? 'Cargando…' : 'Consultar'}
+            {isFetching ? 'Cargando…' : 'Consultar'}
           </button>
           <button
             type="button"
@@ -198,9 +210,56 @@ export function PosSalesRegisterPage() {
           </button>
         </div>
         <p className="muted pay-footer-note">
-          Total del periodo mostrado: <strong>{formatMoney(totalPeriod)}</strong>{' '}
-          ({rows.length} venta{rows.length === 1 ? '' : 's'})
+          Total del periodo mostrado: <strong>{formatMoney(totalPeriod)}</strong>
+          {meta ? (
+            <>
+              {' '}
+              · <span className="muted">{pageRangeLabel(meta)}</span>
+            </>
+          ) : null}
         </p>
+
+        {showPager ? (
+          <div className="members-toolbar members-pagination-toolbar">
+            <div className="members-pagination">
+              <button
+                type="button"
+                className="btn-outline"
+                disabled={page <= 1 || isFetching}
+                onClick={() => setPage((p) => p - 1)}
+              >
+                Anterior
+              </button>
+              <span className="muted small members-pagination-status">
+                Página {meta!.page} de {meta!.pageCount}
+              </span>
+              <button
+                type="button"
+                className="btn-outline"
+                disabled={page >= meta!.pageCount || isFetching}
+                onClick={() => setPage((p) => p + 1)}
+              >
+                Siguiente
+              </button>
+            </div>
+            <label className="members-page-size">
+              <span className="muted small">Por página</span>
+              <MmSelect
+                value={String(pageSize)}
+                disabled={isFetching}
+                onValueChange={(v) => {
+                  setPageSize(Number(v));
+                  setPage(1);
+                }}
+                options={[
+                  { value: '25', label: '25' },
+                  { value: '50', label: '50' },
+                  { value: '100', label: '100' },
+                ]}
+              />
+            </label>
+          </div>
+        ) : null}
 
         <div className="members-table-wrap">
           <table className="members-table">
@@ -217,7 +276,7 @@ export function PosSalesRegisterPage() {
               {rows.length === 0 ? (
                 <tr>
                   <td colSpan={5} className="pay-table-empty">
-                    No hay ventas en este rango.
+                    {isFetching ? 'Cargando…' : 'No hay ventas en este rango.'}
                   </td>
                 </tr>
               ) : (

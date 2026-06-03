@@ -31,7 +31,10 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
     if (payload.kind !== 'access') {
       throw new UnauthorizedException();
     }
-    const member = await this.members.findOne({ where: { id: payload.sub } });
+    const member = await this.members.findOne({
+      where: { id: payload.sub },
+      select: ['id', 'username', 'role_name', 'activated', 'password'],
+    });
     if (!member) {
       throw new UnauthorizedException('Sesión inválida.');
     }

@@ -1,17 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { MmCombobox } from '../../components/ui/MmCombobox';
-import { fetchAllMembersLiteRows } from '../../lib/members-api';
+import {
+  searchMembersLite,
+  type MemberLiteRow,
+} from '../../lib/members-api';
+import { useDebouncedValue } from '../../hooks/useDebouncedValue';
 import { isPortalPreviewRole } from '../../lib/member-wellness-params';
 import { useAuth } from '../../context/AuthContext';
-
-type MembersPayload = {
-  members: Array<{
-    id: number;
-    first_name: string | null;
-    last_name: string | null;
-  }>;
-};
 
 function personLabel(
   m: { first_name?: string | null; last_name?: string | null } | undefined,
@@ -25,9 +21,13 @@ function personLabel(
 export function MemberSocioPreviewBar() {
   const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [members, setMembers] = useState<MembersPayload['members']>([]);
   const [search, setSearch] = useState('');
+  const [searchResults, setSearchResults] = useState<MemberLiteRow[]>([]);
+  const [selectedMember, setSelectedMember] = useState<MemberLiteRow | null>(
+    null,
+  );
   const [loadErr, setLoadErr] = useState<string | null>(null);
+  const debouncedSearch = useDebouncedValue(search, 300);
 
   const role = user?.role_name?.trim().toLowerCase() ?? '';
   const show = isPortalPreviewRole(user?.role_name);
@@ -41,52 +41,75 @@ export function MemberSocioPreviewBar() {
 
   useEffect(() => {
     if (!show || !user) return;
-    fetchAllMembersLiteRows(200)
+    if (selectedValid && selectedMember?.id !== selectedId) {
+      searchMembersLite(String(selectedId), 1)
+        .then((rows) => {
+          const hit = rows.find((m) => m.id === selectedId) ?? rows[0];
+          if (hit) setSelectedMember(hit);
+        })
+        .catch(() => {
+          /* etiqueta fallback abajo */
+        });
+    }
+    if (!selectedValid) {
+      setSelectedMember(null);
+    }
+  }, [show, user, selectedValid, selectedId, selectedMember?.id]);
+
+  useEffect(() => {
+    if (!show || !user) return;
+    const q = debouncedSearch.trim();
+    if (q.length < 2) {
+      setSearchResults([]);
+      return;
+    }
+    let cancelled = false;
+    searchMembersLite(q, 12)
       .then((rows) => {
-        setMembers(rows);
-        setLoadErr(null);
+        if (!cancelled) {
+          setSearchResults(rows);
+          setLoadErr(null);
+        }
       })
-      .catch(() => setLoadErr('No se pudo cargar el listado de socios.'));
-  }, [show, user]);
+      .catch(() => {
+        if (!cancelled) setLoadErr('No se pudo buscar socios.');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [debouncedSearch, show, user]);
 
-  const byId = useMemo(() => {
-    const m = new Map<number, MembersPayload['members'][0]>();
-    for (const x of members) m.set(x.id, x);
-    return m;
-  }, [members]);
-
-  const comboboxOptions = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return [];
-    return members
-      .filter((m) => {
-        const blob = [m.first_name, m.last_name, String(m.id)]
-          .filter(Boolean)
-          .join(' ')
-          .toLowerCase();
-        return blob.includes(q);
-      })
-      .slice(0, 12)
-      .map((m) => ({
+  const comboboxOptions = useMemo(
+    () =>
+      searchResults.map((m) => ({
         value: String(m.id),
         label: personLabel(m, m.id),
-      }));
-  }, [members, search]);
+      })),
+    [searchResults],
+  );
 
   if (!show) return null;
 
   function pickMember(id: number) {
+    const hit = searchResults.find((m) => m.id === id);
+    if (hit) setSelectedMember(hit);
     const next = new URLSearchParams(searchParams);
     next.set('miembro', String(id));
     setSearchParams(next, { replace: true });
     setSearch('');
+    setSearchResults([]);
   }
 
   function clearPick() {
+    setSelectedMember(null);
     const next = new URLSearchParams(searchParams);
     next.delete('miembro');
     setSearchParams(next, { replace: true });
   }
+
+  const displayMember =
+    selectedMember ??
+    (selectedValid ? { id: selectedId, first_name: null, last_name: null } : null);
 
   return (
     <div className="mp-portal-preview" role="region" aria-label="Vista como socio">
@@ -96,7 +119,7 @@ export function MemberSocioPreviewBar() {
         </span>
         {selectedValid ? (
           <span className="mp-portal-preview-current">
-            {personLabel(byId.get(selectedId), selectedId)}
+            {personLabel(displayMember ?? undefined, selectedId)}
             <button type="button" className="btn-outline mp-portal-preview-clear" onClick={clearPick}>
               Quitar filtro
             </button>
@@ -114,8 +137,12 @@ export function MemberSocioPreviewBar() {
           onQueryChange={setSearch}
           options={comboboxOptions}
           onSelect={(v) => pickMember(parseInt(v, 10))}
-          placeholder="Buscar socio (nombre, apellidos o ID)…"
-          emptyMessage="Ningún socio coincide."
+          placeholder="Buscar socio (mín. 2 caracteres)…"
+          emptyMessage={
+            search.trim().length < 2
+              ? 'Escribe al menos 2 caracteres.'
+              : 'Ningún socio coincide.'
+          }
           aria-label="Buscar socio"
         />
       </div>

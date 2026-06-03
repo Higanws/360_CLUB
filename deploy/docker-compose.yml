@@ -57,12 +57,15 @@ services:
       JWT_SECRET: ${JWT_SECRET:?Definir JWT_SECRET en deploy/.env}
       JWT_ACCESS_SECONDS: ${JWT_ACCESS_SECONDS:-1800}
       JWT_REFRESH_SECONDS: ${JWT_REFRESH_SECONDS:-604800}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
       CLUB360_AUTO_INSTALL: ${CLUB360_AUTO_INSTALL:-0}
       CLUB360_DOCKER: "1"
     volumes:
       - club360_backend_data:/app/data
     depends_on:
       mariadb:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     healthcheck:
       test:
@@ -74,6 +77,21 @@ services:
       timeout: 5s
       retries: 8
       start_period: 40s
+    networks:
+      - club360
+
+  redis:
+    image: redis:7-alpine
+    container_name: club360-redis
+    restart: unless-stopped
+    command: ['redis-server', '--appendonly', 'yes']
+    volumes:
+      - club360_redis_data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 10
     networks:
       - club360
 
@@ -139,6 +157,8 @@ volumes:
     name: club360_backend_data
   club360_portainer_data:
     name: club360_portainer_data
+  club360_redis_data:
+    name: club360_redis_data
 
 networks:
   club360:

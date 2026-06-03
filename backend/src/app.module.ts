@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { CacheModule } from '@nestjs/cache-manager';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { join } from 'path';
 import { APP_GUARD } from '@nestjs/core';
@@ -69,6 +70,30 @@ const dbStack = isInstallComplete()
         limit: 120,
       },
     ]),
+    CacheModule.registerAsync({
+      isGlobal: true,
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: async (config: ConfigService) => {
+        const redisUrl = config.get<string>('REDIS_URL')?.trim();
+        if (redisUrl) {
+          try {
+            const { redisStore } = await import('cache-manager-redis-yet');
+            return {
+              store: await redisStore({ url: redisUrl }),
+              ttl: 60_000,
+              max: 500,
+            };
+          } catch (err) {
+            console.warn(
+              '[cache] Redis no disponible; fallback in-memory:',
+              err instanceof Error ? err.message : err,
+            );
+          }
+        }
+        return { ttl: 60_000, max: 500 };
+      },
+    }),
     InstallModule,
     ...dbStack,
   ],

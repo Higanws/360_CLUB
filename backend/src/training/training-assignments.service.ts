@@ -14,6 +14,11 @@ import { TrainingAssignmentTrainer } from '../entities/training-assignment-train
 import { TrainingRoutine } from '../entities/training-routine.entity';
 import { normalizeClubRole } from '../shared/domain/club/club-roles';
 import { staffMustUseOwnMembersOnly } from '../shared/application/security/staff-member-scope';
+import {
+  buildPageMeta,
+  paginationSkip,
+  type PaginatedMeta,
+} from '../shared/dto/paginated-meta';
 import { CreateTrainingAssignmentDto } from './dto/create-training-assignment.dto';
 
 function memberDisplayName(m: GymMember | undefined): string {
@@ -56,8 +61,78 @@ export class TrainingAssignmentsService {
     return members.some((m) => m.member?.assign_staff_mem === actor.userId);
   }
 
-  async list(actor: { userId: number; role_name: string }) {
+  async list(
+    actor: { userId: number; role_name: string },
+    page = 1,
+    pageSize = 25,
+    q?: string,
+    memberId?: number,
+    trainerId?: number,
+  ): Promise<{
+    assignments: Array<{
+      id: number;
+      routine_id: number;
+      routine_title: string;
+      member_ids: number[];
+      member_names: string[];
+      trainer_names: string[];
+      created_at: string;
+    }>;
+    meta: PaginatedMeta;
+  }> {
+    const ps = Math.min(100, Math.max(1, pageSize));
+    const pg = Math.max(1, page);
+
+    const baseQb = this.assignments
+      .createQueryBuilder('a')
+      .leftJoin('a.trainers', 't')
+      .leftJoin('a.members', 'am')
+      .leftJoin('am.member', 'gm')
+      .leftJoin('a.routine', 'r');
+
+    if (staffMustUseOwnMembersOnly(actor)) {
+      baseQb.andWhere(
+        '(t.trainer_member_id = :uid OR gm.assign_staff_mem = :uid)',
+        { uid: actor.userId },
+      );
+    }
+    if (memberId != null && memberId > 0) {
+      baseQb.andWhere('am.member_id = :memberId', { memberId });
+    }
+    if (trainerId != null && trainerId > 0) {
+      baseQb.andWhere('t.trainer_member_id = :trainerId', { trainerId });
+    }
+    const qTrim = q?.trim();
+    if (qTrim) {
+      const like = `%${qTrim.replace(/[%_\\]/g, '\\$&')}%`;
+      baseQb.andWhere(
+        `(r.title LIKE :like OR gm.first_name LIKE :like OR gm.last_name LIKE :like OR CAST(gm.id AS CHAR) LIKE :like)`,
+        { like },
+      );
+    }
+
+    const total = await baseQb
+      .clone()
+      .select('a.id')
+      .distinct(true)
+      .getCount();
+
+    const idRows = await baseQb
+      .clone()
+      .select('a.id', 'id')
+      .distinct(true)
+      .orderBy('a.id', 'DESC')
+      .offset(paginationSkip(pg, ps))
+      .limit(ps)
+      .getRawMany<{ id: number }>();
+
+    const idList = idRows.map((r) => Number(r.id)).filter((id) => id > 0);
+    if (!idList.length) {
+      return { assignments: [], meta: buildPageMeta(total, pg, ps) };
+    }
+
     const rows = await this.assignments.find({
+      where: { id: In(idList) },
       relations: [
         'routine',
         'members',
@@ -67,23 +142,31 @@ export class TrainingAssignmentsService {
       ],
       order: { id: 'DESC' },
     });
-    const visible = rows.filter((a) => this.canViewAssignment(a, actor));
-    return visible.map((a) => ({
-      id: a.id,
-      routine_id: a.routine_id,
-      routine_title: a.routine?.title ?? '',
-      member_ids: (a.members ?? []).map((m) => m.member_id),
-      member_names: (a.members ?? []).map((m) =>
-        memberDisplayName(m.member),
-      ),
-      trainer_names: (a.trainers ?? []).map((t) =>
-        memberDisplayName(t.trainer),
-      ),
-      created_at:
-        a.created_at instanceof Date
-          ? a.created_at.toISOString()
-          : String(a.created_at),
-    }));
+
+    const byId = new Map(rows.map((a) => [a.id, a]));
+    const ordered = idList
+      .map((id) => byId.get(id))
+      .filter((a): a is TrainingAssignment => a != null);
+
+    return {
+      assignments: ordered.map((a) => ({
+        id: a.id,
+        routine_id: a.routine_id,
+        routine_title: a.routine?.title ?? '',
+        member_ids: (a.members ?? []).map((m) => m.member_id),
+        member_names: (a.members ?? []).map((m) =>
+          memberDisplayName(m.member),
+        ),
+        trainer_names: (a.trainers ?? []).map((t) =>
+          memberDisplayName(t.trainer),
+        ),
+        created_at:
+          a.created_at instanceof Date
+            ? a.created_at.toISOString()
+            : String(a.created_at),
+      })),
+      meta: buildPageMeta(total, pg, ps),
+    };
   }
 
   async getOne(
