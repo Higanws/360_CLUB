@@ -106,6 +106,31 @@ services:
     networks:
       - club360
 
+  # MCP para agentes externos (Telegram, etc.) — solo localhost; Cloudflare → :3100
+  mcp:
+    build:
+      context: ..
+      dockerfile: mcp-server/Dockerfile
+    container_name: club360-mcp
+    restart: unless-stopped
+    environment:
+      CLUB360_API_URL: http://api:3000/api
+      CLUB360_USERNAME: ${MCP_CLUB360_USERNAME:-admin}
+      CLUB360_PASSWORD: ${MCP_CLUB360_PASSWORD:?Definir MCP_CLUB360_PASSWORD en deploy/.env}
+      MCP_TRANSPORT: http
+      MCP_HTTP_HOST: 0.0.0.0
+      MCP_HTTP_PORT: 3100
+      MCP_HTTP_BEARER_TOKEN: ${MCP_HTTP_BEARER_TOKEN:?Definir MCP_HTTP_BEARER_TOKEN en deploy/.env}
+      MCP_PUBLIC_URL: ${MCP_PUBLIC_URL:-https://mcp.unogym.online}
+      CLUB360_REQUEST_TIMEOUT_MS: ${CLUB360_REQUEST_TIMEOUT_MS:-30000}
+    ports:
+      - '127.0.0.1:3100:3100'
+    depends_on:
+      api:
+        condition: service_healthy
+    networks:
+      - club360
+
 volumes:
   club360_mariadb_data:
     name: club360_mariadb_data

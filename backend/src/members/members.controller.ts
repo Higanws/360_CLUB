@@ -14,6 +14,7 @@ import {
 import { BusinessRoleGuard } from './business-role.guard';
 import { CreateMemberDto } from './dto/create-member.dto';
 import { MembersListQueryDto } from './dto/members-list-query.dto';
+import { MembersSearchQueryDto } from './dto/members-search-query.dto';
 import { UpdateMemberDto } from './dto/update-member.dto';
 import { MembersService } from './members.service';
 import { BusinessRoles } from './roles.decorator';
@@ -30,6 +31,20 @@ export class MembersController {
   @UseGuards(AdministratorRoleGuard)
   formOptions() {
     return this.members.formOptions();
+  }
+
+  /** Búsqueda por nombre, username o DNI (MCP / integraciones). */
+  @Get('search')
+  search(
+    @Query() query: MembersSearchQueryDto,
+    @Req() req: { user: { userId: number; role_name: string } },
+  ) {
+    return this.members.searchForUser({
+      userId: req.user.userId,
+      role_name: req.user.role_name,
+      q: query.q,
+      limit: query.limit ?? 20,
+    });
   }
 
   @Get()
