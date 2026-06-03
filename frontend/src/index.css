@@ -1042,8 +1042,7 @@ code {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
   gap: 1rem;
-  margin-bottom: 1rem;
-  flex-shrink: 0;
+  margin-bottom: 1.25rem;
 }
 
 .mm-dashboard-kpi {
@@ -1074,31 +1073,7 @@ code {
 }
 
 .mm-dashboard-catalog {
-  margin-bottom: 1rem;
-  flex-shrink: 0;
-}
-
-.mm-dashboard-body {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-.mm-dashboard-page {
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  flex: 1;
-  max-height: calc(100vh - var(--mm-topbar-height, 3.25rem));
-  padding-bottom: 1rem;
-  overflow: hidden;
-}
-
-.mm-main:has(.mm-dashboard-page) {
-  max-height: 100vh;
-  overflow: hidden;
+  margin-bottom: 1.25rem;
 }
 
 .mm-dashboard-catalog-grid {
@@ -1114,6 +1089,42 @@ code {
   display: flex;
   flex-direction: column;
   gap: 0.2rem;
+}
+
+/* Solo módulo dashboard: no rebasar altura de la barra lateral (100vh) */
+.mm-main:has(.mm-dashboard-page) {
+  max-height: 100vh;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.mm-page.mm-dashboard-page {
+  --mm-dashboard-topbar: 3.25rem;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+  max-height: calc(100vh - var(--mm-dashboard-topbar));
+  padding-bottom: 1rem;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.mm-page.mm-dashboard-page .mm-page-head {
+  flex-shrink: 0;
+}
+
+.mm-dashboard-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.mm-dashboard-body > .mm-dashboard-kpis,
+.mm-dashboard-body > .mm-dashboard-catalog {
+  flex-shrink: 0;
 }
 
 .mm-dashboard-charts {
@@ -1142,7 +1153,7 @@ code {
 .mm-dashboard-chart-wrap {
   width: 100%;
   flex: 1;
-  min-height: 8rem;
+  min-height: 0;
 }
 
 .mm-dashboard-foot {
@@ -1633,10 +1644,8 @@ code {
 .mm-layout {
   display: flex;
   min-height: 100vh;
-  height: 100vh;
   background: var(--bg-page);
   position: relative;
-  --mm-topbar-height: 3.25rem;
 }
 
 .mm-sidebar-column {
@@ -2275,7 +2284,6 @@ code {
   display: flex;
   flex-direction: column;
   min-width: 0;
-  min-height: 0;
 }
 
 .mm-main-bar {
@@ -2291,7 +2299,6 @@ code {
 .mm-page {
   padding: 1.25rem 1.5rem 2rem;
   flex: 1;
-  min-height: 0;
 }
 
 .mm-page-head {
@@ -2347,7 +2354,7 @@ code {
     overflow: visible;
   }
 
-  .mm-dashboard-page {
+  .mm-page.mm-dashboard-page {
     max-height: none;
     overflow: visible;
   }
@@ -2358,7 +2365,7 @@ code {
 
   .mm-dashboard-chart-wrap {
     flex: none;
-    min-height: 15rem;
+    min-height: 16rem;
   }
 }
 

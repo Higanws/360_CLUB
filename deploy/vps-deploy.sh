@@ -23,6 +23,7 @@ echo "$(git rev-parse --short HEAD)" >> "${REPO_DIR}/VERSION"
 
 cd "${COMPOSE_DIR}"
 export VITE_APP_VERSION="${REF}"
+docker compose down --remove-orphans 2>/dev/null || true
 docker compose up -d --build web api mcp
 
 echo "Desplegado ${REF} ($(head -1 "${REPO_DIR}/VERSION" | tr -d '\n')) en $(date -u +%Y-%m-%dT%H:%M:%SZ)"
