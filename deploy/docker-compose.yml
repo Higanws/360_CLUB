@@ -83,6 +83,7 @@ services:
       dockerfile: frontend/Dockerfile
       args:
         VITE_API_URL: /api
+        VITE_APP_VERSION: ${VITE_APP_VERSION:-dev}
     container_name: club360-web
     restart: unless-stopped
     ports:

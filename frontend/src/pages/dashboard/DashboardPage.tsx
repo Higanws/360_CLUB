@@ -140,7 +140,7 @@ export function DashboardPage() {
       {error ? <p className="login-error">{error}</p> : null}
 
       {data ? (
-        <>
+        <div className="mm-dashboard-body">
           <section className="mm-dashboard-kpis">
             <div className="members-panel mm-dashboard-kpi">
               <p className="muted mm-dashboard-kpi-label">Socios</p>
@@ -201,7 +201,7 @@ export function DashboardPage() {
                 Ingresos registrados en punto de venta (últimos 30 días).
               </p>
               <div className="mm-dashboard-chart-wrap">
-                <ResponsiveContainer width="100%" height={280}>
+                <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={salesChartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
                     <XAxis
@@ -242,7 +242,7 @@ export function DashboardPage() {
                 Validaciones en recepción: permitidos vs. resto (últimos 14 días).
               </p>
               <div className="mm-dashboard-chart-wrap">
-                <ResponsiveContainer width="100%" height={280}>
+                <ResponsiveContainer width="100%" height="100%">
                   <AreaChart data={accessChartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
                     <XAxis
@@ -280,14 +280,15 @@ export function DashboardPage() {
                   </AreaChart>
                 </ResponsiveContainer>
               </div>
-              <p className="muted mm-dashboard-foot">
-                Más detalle en{' '}
-                <Link to={routes.controlAccesoRegistro}>Registro de accesos</Link> y{' '}
-                <Link to={routes.puntoVentaVentas}>Ventas POS</Link>.
-              </p>
             </section>
           </div>
-        </>
+
+          <p className="muted mm-dashboard-foot">
+            Más detalle en{' '}
+            <Link to={routes.controlAccesoRegistro}>Registro de accesos</Link> y{' '}
+            <Link to={routes.puntoVentaVentas}>Ventas POS</Link>.
+          </p>
+        </div>
       ) : !error ? (
         <p className="muted">Cargando métricas…</p>
       ) : null}

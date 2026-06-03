@@ -87,6 +87,11 @@ export function LoginPage() {
   return (
     <div className="login-root">
       <div className="login-bg" aria-hidden />
+      {import.meta.env.VITE_APP_VERSION ? (
+        <span className="login-version" aria-label="Versión de la aplicación">
+          {String(import.meta.env.VITE_APP_VERSION)}
+        </span>
+      ) : null}
       <div className="login-stack">
         <div className="login-bar">
           <ThemeToggle />
