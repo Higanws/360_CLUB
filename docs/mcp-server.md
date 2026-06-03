@@ -72,6 +72,16 @@ const transport = new StreamableHTTPClientTransport(
 );
 ```
 
+## Telegram y WhatsApp (webhooks)
+
+El MCP **no** recibe webhooks de Telegram ni WhatsApp. Necesitás un **servicio bot** aparte que:
+
+1. Exponga HTTPS (`https://bot.tudominio.com/...`) para el webhook de la plataforma.
+2. Use un cliente MCP HTTP contra `https://mcp.unogym.online` con el Bearer token.
+3. Orqueste un LLM con tool calling (o comandos fijos) y responda al usuario.
+
+Guía completa: **[mcp-webhooks-telegram-whatsapp.md](./mcp-webhooks-telegram-whatsapp.md)** (Telegram `setWebhook`, WhatsApp Cloud API, variables, seguridad y ejemplos de código).
+
 ## Desarrollo local
 
 Ver [`mcp-server/README.md`](../mcp-server/README.md) (stdio / HTTP local).

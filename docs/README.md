@@ -9,6 +9,8 @@
 | **[base-de-datos.md](./base-de-datos.md)** | Desarrolladores | `schema_mysql.sql`, `seed_mvp.sql`, flujos wizard y reset |
 | **[docker.md](./docker.md)** | DevOps / VPS | Stack completo en `deploy/` + Portainer; BD suelta en `services/` |
 | **[guia-usuario.md](./guia-usuario.md)** | Personal del club | Uso funcional de la app (recepción, admin, staff) |
+| **[mcp-server.md](./mcp-server.md)** | Integradores / bots | MCP en producción (`mcp.unogym.online`) |
+| **[mcp-webhooks-telegram-whatsapp.md](./mcp-webhooks-telegram-whatsapp.md)** | Bots | Webhook Telegram/WhatsApp + cliente MCP |
 
 ## Visión rápida
 
