@@ -30,6 +30,10 @@ Authorization: Bearer <MCP_HTTP_BEARER_TOKEN>
 
 Ver [docs/mcp-server.md](../docs/mcp-server.md) y `deploy/setup-cloudflare-mcp.sh`.
 
+### Bot Telegram / WhatsApp
+
+El MCP no es el webhook de mensajería. Creá un servicio bot que llame al MCP por HTTP. Guía: [docs/mcp-webhooks-telegram-whatsapp.md](../docs/mcp-webhooks-telegram-whatsapp.md).
+
 ## Desarrollo local
 
 ### stdio (Cursor / agentes locales)
