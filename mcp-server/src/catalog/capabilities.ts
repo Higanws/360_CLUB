@@ -60,6 +60,10 @@ const CAPABILITY_META: CapabilityEntry[] = [
   { name: 'pos_product_delete', domain: 'pos', minRole: 'administrator', restHint: 'DELETE /pos/products/:id' },
   { name: 'pos_sale_create', domain: 'pos', minRole: 'administrator', restHint: 'POST /pos/sales' },
   { name: 'pos_sales_list', domain: 'pos', minRole: 'administrator', restHint: 'GET /pos/sales' },
+  { name: 'migration_requirements', domain: 'migration', minRole: 'administrator', workflowResource: 'club360://guide/migration' },
+  { name: 'migration_plan', domain: 'migration', minRole: 'administrator', workflowResource: 'club360://guide/migration' },
+  { name: 'migration_validate_batch', domain: 'migration', minRole: 'administrator', workflowResource: 'club360://guide/migration' },
+  { name: 'migration_import_batch', domain: 'migration', minRole: 'administrator', workflowResource: 'club360://guide/migration' },
 ];
 
 export function listCapabilitiesForTools(

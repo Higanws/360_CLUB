@@ -92,6 +92,18 @@ Conectá el cliente MCP a `http://127.0.0.1:3100`. Health: `GET /health`.
 
 Ver `club360_list_capabilities` para el catálogo según tu rol.
 
+## Modo migración (lotes)
+
+Para importar datos legacy (clientes, rutinas, nutrición, etc.):
+
+1. Leé el resource `club360://guide/migration`
+2. `migration_plan` — orden de fases
+3. `migration_requirements` — campos obligatorios por entidad/tabla
+4. `migration_validate_batch` — dry run
+5. `migration_import_batch` — carga real (máx. 200 ítems; acumular `id_map`)
+
+Rol: **administrator**.
+
 ## Tests
 
 ```bash

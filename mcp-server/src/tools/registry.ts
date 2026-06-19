@@ -13,6 +13,7 @@ import {
 } from './payments-dashboard-settings.js';
 import { activityTools, trainingTools } from './activities-training.js';
 import { accessTools, posTools } from './access-pos.js';
+import { migrationTools } from './migration.js';
 import type { ToolDefinition } from './types.js';
 import { listCapabilitiesForTools } from '../catalog/capabilities.js';
 import { formatToolSuccess } from '../client/errors.js';
@@ -30,6 +31,7 @@ const ALL_TOOLS: ToolDefinition[] = [
   ...trainingTools,
   ...accessTools,
   ...posTools,
+  ...migrationTools,
 ];
 
 /** Parche list_capabilities para recibir catálogo filtrado */
@@ -46,6 +48,7 @@ if (listCap) {
         'club360://guide/workflows',
         'club360://guide/nutrition-model',
         'club360://guide/permissions',
+        'club360://guide/migration',
       ],
     });
   };

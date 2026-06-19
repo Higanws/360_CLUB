@@ -43,6 +43,12 @@ const RESOURCE_FILES: { uri: string; file: string; name: string; description: st
     name: 'Errores API',
     description: 'Interpretar statusCode y message',
   },
+  {
+    uri: 'club360://guide/migration',
+    file: 'migration.md',
+    name: 'Modo migración',
+    description: 'Importación en lotes: requisitos por tabla, fases e id_map',
+  },
 ];
 
 function resourcesDir(): string {
