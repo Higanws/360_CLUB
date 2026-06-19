@@ -16,7 +16,14 @@ fi
 
 cd "${REPO_DIR}"
 git fetch --tags origin
-git checkout "${REF}"
+if git rev-parse --verify "origin/${REF}" >/dev/null 2>&1; then
+  git checkout -B "${REF}" "origin/${REF}"
+elif git rev-parse --verify "${REF}" >/dev/null 2>&1; then
+  git checkout "${REF}"
+else
+  echo "Ref no encontrada: ${REF}"
+  exit 1
+fi
 
 echo "${REF}" > "${REPO_DIR}/VERSION"
 echo "$(git rev-parse --short HEAD)" >> "${REPO_DIR}/VERSION"
