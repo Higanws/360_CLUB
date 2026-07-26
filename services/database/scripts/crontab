@@ -1,0 +1,2 @@
+# Backup semanal: domingo 03:00 UTC
+0 3 * * 0 /scripts/backup.sh

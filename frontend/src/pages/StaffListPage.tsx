@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
+import { MmSearchField } from '../components/ui/MmSearchField';
 import { MmSelect } from '../components/ui/MmSelect';
 import { MemberAvatar } from '../components/mm/MemberAvatar';
 import { MmTableActions } from '../components/mm/MmTableActions';
 import { PageLoading } from '../components/mm/PageLoading';
 import { routes } from '../config/member-management';
 import { memberPortalRoutes } from '../config/member-portal';
+import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import { useGestionAuth } from '../hooks/useGestionAuth';
 import { api } from '../lib/api';
 import { apiErrorStatus } from '../lib/is-api-error';
@@ -23,10 +25,17 @@ export function StaffListPage() {
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
+  const [filterQuery, setFilterQuery] = useState('');
+  const debouncedQuery = useDebouncedValue(filterQuery, 300);
   const { data, isLoading, isError, error: queryError } = useStaffList(
     page,
     pageSize,
+    debouncedQuery,
   );
+
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedQuery]);
 
   useEffect(() => {
     if (isError && apiErrorStatus(queryError) === 403) {
@@ -72,6 +81,17 @@ export function StaffListPage() {
       </header>
 
       {error ? <p className="login-error">{error}</p> : null}
+
+      <div className="pay-toolbar">
+        <MmSearchField
+          grow
+          label="Buscar"
+          value={filterQuery}
+          onChange={(e) => setFilterQuery(e.target.value)}
+          placeholder="Nombre o email…"
+          autoComplete="off"
+        />
+      </div>
 
       {meta && meta.total > 0 ? (
         <p className="muted small">{pageRangeLabel(meta)}</p>

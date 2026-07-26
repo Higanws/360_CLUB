@@ -1,8 +1,7 @@
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { Inject, Injectable } from '@nestjs/common';
 import type { Cache } from 'cache-manager';
-import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource } from 'typeorm';
+import { PrismaService } from '../database/prisma.service';
 import {
   CACHE_KEYS,
   CACHE_TTL,
@@ -12,14 +11,6 @@ import {
   GYM_MEMBER_READ,
   type GymMemberReadRepository,
 } from '../shared/application/ports/gym-member-read.port';
-import { ClubAccessLog } from '../entities/club-access-log.entity';
-import { MembershipPayment } from '../entities/membership-payment.entity';
-import { Membership } from '../entities/membership.entity';
-import { Activity } from '../entities/activity.entity';
-import { TrainingRoutine } from '../entities/training-routine.entity';
-import { PosProduct } from '../entities/pos-product.entity';
-import { PosSale } from '../entities/pos-sale.entity';
-import { NutritionPlan } from '../entities/nutrition-plan.entity';
 
 export type DashboardBusinessMetrics = {
   generated_at: string;
@@ -66,7 +57,7 @@ function addDaysLocal(ymd: string, delta: number): string {
 @Injectable()
 export class DashboardService {
   constructor(
-    @InjectDataSource() private readonly ds: DataSource,
+    private readonly prisma: PrismaService,
     @Inject(GYM_MEMBER_READ) private readonly memberRead: GymMemberReadRepository,
     @Inject(CACHE_MANAGER) private readonly cache: Cache,
   ) {}
@@ -100,26 +91,36 @@ export class DashboardService {
       training_routines,
       nutrition_plans,
     ] = await Promise.all([
-      this.ds.getRepository(Membership).createQueryBuilder('x').getCount(),
-      this.ds.getRepository(PosProduct).createQueryBuilder('x').getCount(),
-      this.ds.getRepository(Activity).createQueryBuilder('x').getCount(),
-      this.ds.getRepository(TrainingRoutine).createQueryBuilder('x').getCount(),
-      this.ds.getRepository(NutritionPlan).createQueryBuilder('x').getCount(),
+      this.prisma.membership.count(),
+      this.prisma.posProduct.count(),
+      this.prisma.activity.count(),
+      this.prisma.trainingRoutine.count(),
+      this.prisma.nutritionPlan.count(),
     ]);
 
-    const debtRow = await this.ds
-      .getRepository(MembershipPayment)
-      .createQueryBuilder('mp')
-      .select(
-        'COALESCE(SUM(GREATEST(0, COALESCE(mp.membership_amount, 0) - COALESCE(mp.paid_amount, 0))), 0)',
-        'total_owed',
-      )
-      .addSelect(
-        'SUM(CASE WHEN COALESCE(mp.membership_amount, 0) > COALESCE(mp.paid_amount, 0) THEN 1 ELSE 0 END)',
-        'pending_invoices',
-      )
-      .getRawOne<{ total_owed: string | number; pending_invoices: string | number }>();
-
+    const debtRows = await this.prisma.$queryRaw<
+      Array<{ total_owed: string | number; pending_invoices: string | number }>
+    >`
+      SELECT
+        COALESCE(
+          SUM(
+            GREATEST(
+              0,
+              COALESCE(membership_amount, 0) - COALESCE(paid_amount, 0)
+            )
+          ),
+          0
+        ) AS total_owed,
+        SUM(
+          CASE
+            WHEN COALESCE(membership_amount, 0) > COALESCE(paid_amount, 0)
+              THEN 1
+            ELSE 0
+          END
+        ) AS pending_invoices
+      FROM membership_payment
+    `;
+    const debtRow = debtRows[0];
     const totalOwed = Number(debtRow?.total_owed ?? 0);
     const pendingInvoices = Number(debtRow?.pending_invoices ?? 0);
 
@@ -130,17 +131,19 @@ export class DashboardService {
     const start30 = new Date(`${from30}T00:00:00.000`);
     const endToday = new Date(`${today}T23:59:59.999`);
 
-    const saleAgg = await this.ds
-      .getRepository(PosSale)
-      .createQueryBuilder('s')
-      .select('DATE(s.created_at)', 'd')
-      .addSelect('COUNT(s.id)', 'cnt')
-      .addSelect('COALESCE(SUM(s.total_amount), 0)', 'rev')
-      .where('s.created_at >= :startTs', { startTs: start30 })
-      .andWhere('s.created_at <= :endTs', { endTs: endToday })
-      .groupBy('DATE(s.created_at)')
-      .orderBy('d', 'ASC')
-      .getRawMany<{ d: Date | string; cnt: string | number; rev: string | number }>();
+    const saleAgg = await this.prisma.$queryRaw<
+      Array<{ d: Date | string; cnt: string | number | bigint; rev: string | number }>
+    >`
+      SELECT
+        DATE(created_at) AS d,
+        COUNT(id) AS cnt,
+        COALESCE(SUM(total_amount), 0) AS rev
+      FROM pos_sale
+      WHERE created_at >= ${start30}
+        AND created_at <= ${endToday}
+      GROUP BY DATE(created_at)
+      ORDER BY d ASC
+    `;
 
     const saleMap = new Map<string, { revenue: number; sales_count: number }>();
     for (const r of saleAgg) {
@@ -159,27 +162,23 @@ export class DashboardService {
       sales_last_30d.push({ date, ...v });
     }
 
-    const accessAgg = await this.ds
-      .getRepository(ClubAccessLog)
-      .createQueryBuilder('l')
-      .select('l.access_date', 'd')
-      .addSelect(
-        "SUM(CASE WHEN l.outcome = 'allowed' THEN 1 ELSE 0 END)",
-        'allowed_cnt',
-      )
-      .addSelect(
-        "SUM(CASE WHEN l.outcome <> 'allowed' THEN 1 ELSE 0 END)",
-        'denied_cnt',
-      )
-      .where('l.access_date >= :from', { from: from14 })
-      .andWhere('l.access_date <= :to', { to: today })
-      .groupBy('l.access_date')
-      .orderBy('l.access_date', 'ASC')
-      .getRawMany<{
+    const accessAgg = await this.prisma.$queryRaw<
+      Array<{
         d: Date | string;
-        allowed_cnt: string | number;
-        denied_cnt: string | number;
-      }>();
+        allowed_cnt: string | number | bigint;
+        denied_cnt: string | number | bigint;
+      }>
+    >`
+      SELECT
+        access_date AS d,
+        SUM(CASE WHEN outcome = 'allowed' THEN 1 ELSE 0 END) AS allowed_cnt,
+        SUM(CASE WHEN outcome <> 'allowed' THEN 1 ELSE 0 END) AS denied_cnt
+      FROM club_access_log
+      WHERE access_date >= ${from14}
+        AND access_date <= ${today}
+      GROUP BY access_date
+      ORDER BY access_date ASC
+    `;
 
     const accessMap = new Map<string, { allowed: number; denied: number }>();
     for (const r of accessAgg) {

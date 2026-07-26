@@ -1,9 +1,3 @@
-# MySQL 8 (Docker)
+# MySQL (legacy)
 
-Ver **[../../docs/docker.md](../../docs/docker.md#servicesmysql--mysql-8-mínimo)**.
-
-```powershell
-docker compose up -d
-```
-
-Luego `cd ../../backend && npm run db:seed`.
+Preferí `services/database/`. Ver **[`DOCUMENTACION.md`](../../DOCUMENTACION.md)**.

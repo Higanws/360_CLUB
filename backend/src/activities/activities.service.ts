@@ -4,13 +4,13 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository } from 'typeorm';
-import { Activity } from '../entities/activity.entity';
-import { ActivityCategory } from '../entities/activity-category.entity';
-import { ActivityTrainer } from '../entities/activity-trainer.entity';
-import { ActivityVideo } from '../entities/activity-video.entity';
-import { GymMember } from '../entities/gym-member.entity';
+import { Prisma } from '@prisma/client';
+import type {
+  Activity,
+  ActivityCategory,
+  GymMember,
+} from '@prisma/client';
+import { PrismaService } from '../database/prisma.service';
 import { CreateActivityCategoryDto } from './dto/create-activity-category.dto';
 import { CreateActivityDto } from './dto/create-activity.dto';
 import { UpdateActivityDto } from './dto/update-activity.dto';
@@ -20,6 +20,12 @@ import {
   paginationSkip,
 } from '../shared/dto/paginated-meta';
 import { normalizeActivityDifficulty } from './activity-difficulty';
+
+type ActivityWithRelations = Activity & {
+  category: ActivityCategory | null;
+  trainers?: Array<{ trainer_member_id: number; member: GymMember | null }>;
+  videos?: Array<{ id: number; url: string; sort_order: number }>;
+};
 
 function normUrls(urls: string[]): string[] {
   const out: string[] = [];
@@ -43,7 +49,7 @@ function normUrls(urls: string[]): string[] {
   return out;
 }
 
-function trainerDisplayName(m: GymMember | undefined): string {
+function trainerDisplayName(m: GymMember | null | undefined): string {
   if (!m) return '—';
   const parts = [m.first_name, m.last_name].filter(Boolean).join(' ').trim();
   if (parts) return parts;
@@ -52,27 +58,17 @@ function trainerDisplayName(m: GymMember | undefined): string {
 
 @Injectable()
 export class ActivitiesService {
-  constructor(
-    @InjectRepository(Activity)
-    private readonly activities: Repository<Activity>,
-    @InjectRepository(ActivityCategory)
-    private readonly categories: Repository<ActivityCategory>,
-    @InjectRepository(ActivityVideo)
-    private readonly videos: Repository<ActivityVideo>,
-    @InjectRepository(ActivityTrainer)
-    private readonly trainers: Repository<ActivityTrainer>,
-    @InjectRepository(GymMember)
-    private readonly members: Repository<GymMember>,
-  ) {}
+  constructor(private readonly prisma: PrismaService) {}
 
   listCategories(): Promise<ActivityCategory[]> {
-    return this.categories.find({ order: { name: 'ASC' } });
+    return this.prisma.activityCategory.findMany({
+      orderBy: { name: 'asc' },
+    });
   }
 
   async createCategory(dto: CreateActivityCategoryDto): Promise<ActivityCategory> {
     const name = dto.name.trim();
-    const row = this.categories.create({ name });
-    return this.categories.save(row);
+    return this.prisma.activityCategory.create({ data: { name } });
   }
 
   async listActivities(
@@ -95,72 +91,65 @@ export class ActivitiesService {
     const ps = Math.min(100, Math.max(1, pageSize));
     const pg = Math.max(1, page);
 
-    const idQb = this.activities
-      .createQueryBuilder('a')
-      .leftJoin('a.category', 'c')
-      .select('a.id', 'id')
-      .orderBy('a.id', 'DESC');
-
     const qTrim = q?.trim();
-    if (qTrim) {
-      const like = `%${qTrim.replace(/[%_\\]/g, '\\$&')}%`;
-      idQb.andWhere(
-        `(a.title LIKE :like OR c.name LIKE :like)`,
-        { like },
-      );
-    }
+    const where: Prisma.ActivityWhereInput = qTrim
+      ? {
+          OR: [
+            { title: { contains: qTrim } },
+            { category: { name: { contains: qTrim } } },
+          ],
+        }
+      : {};
 
-    const total = await idQb.clone().getCount();
-    const idRows = await idQb
-      .offset(paginationSkip(pg, ps))
-      .limit(ps)
-      .getRawMany<{ id: number }>();
-    const ids = idRows.map((r) => Number(r.id)).filter((id) => id > 0);
-    if (!ids.length) {
-      return { activities: [], meta: buildPageMeta(total, pg, ps) };
-    }
+    const total = await this.prisma.activity.count({ where });
+    const rows = (await this.prisma.activity.findMany({
+      where,
+      include: {
+        category: true,
+        trainers: { include: { member: true } },
+      },
+      orderBy: { id: 'desc' },
+      skip: paginationSkip(pg, ps),
+      take: ps,
+    })) as ActivityWithRelations[];
 
-    const rows = await this.activities.find({
-      where: { id: In(ids) },
-      relations: ['category', 'trainers', 'trainers.member'],
-      order: { id: 'DESC' },
-    });
-    const videoCounts = await this.videos
-      .createQueryBuilder('v')
-      .select('v.activity_id', 'activity_id')
-      .addSelect('COUNT(v.id)', 'cnt')
-      .where('v.activity_id IN (:...ids)', { ids })
-      .groupBy('v.activity_id')
-      .getRawMany<{ activity_id: number; cnt: string | number }>();
+    const ids = rows.map((r) => r.id);
+    const videoCounts = ids.length
+      ? await this.prisma.activityVideo.groupBy({
+          by: ['activity_id'],
+          where: { activity_id: { in: ids } },
+          _count: { id: true },
+        })
+      : [];
     const countByActivity = new Map(
-      videoCounts.map((r) => [Number(r.activity_id), Number(r.cnt)]),
+      videoCounts.map((r) => [r.activity_id, r._count.id]),
     );
 
-    const byId = new Map(rows.map((a) => [a.id, a]));
-    const activities = ids
-      .map((id) => byId.get(id))
-      .filter((a): a is Activity => a != null)
-      .map((a) => ({
-        id: a.id,
-        title: a.title,
-        category_id: a.category?.id ?? 0,
-        category_name: a.category?.name ?? '',
-        description: a.description,
-        difficulty_level: normalizeActivityDifficulty(a.difficulty_level),
-        trainer_names: (a.trainers ?? []).map((t) =>
-          trainerDisplayName(t.member),
-        ),
-        video_count: countByActivity.get(a.id) ?? 0,
-      }));
+    const activities = rows.map((a) => ({
+      id: a.id,
+      title: a.title,
+      category_id: a.category?.id ?? 0,
+      category_name: a.category?.name ?? '',
+      description: a.description,
+      difficulty_level: normalizeActivityDifficulty(a.difficulty_level),
+      trainer_names: (a.trainers ?? []).map((t) =>
+        trainerDisplayName(t.member),
+      ),
+      video_count: countByActivity.get(a.id) ?? 0,
+    }));
 
     return { activities, meta: buildPageMeta(total, pg, ps) };
   }
 
   async getOne(id: number) {
-    const a = await this.activities.findOne({
+    const a = (await this.prisma.activity.findUnique({
       where: { id },
-      relations: ['category', 'trainers', 'trainers.member', 'videos'],
-    });
+      include: {
+        category: true,
+        trainers: { include: { member: true } },
+        videos: true,
+      },
+    })) as ActivityWithRelations | null;
     if (!a) throw new NotFoundException('Actividad no encontrada.');
     return this.serializeDetail(a);
   }
@@ -174,13 +163,14 @@ export class ActivitiesService {
     await this.assertTrainerIds(trainerIds, actor);
     const urls = normUrls(dto.video_urls ?? []);
 
-    const entity = this.activities.create({
-      category: { id: dto.category_id } as ActivityCategory,
-      title: dto.title.trim(),
-      description: dto.description?.trim() || null,
-      difficulty_level: normalizeActivityDifficulty(dto.difficulty_level),
+    const saved = await this.prisma.activity.create({
+      data: {
+        category_id: dto.category_id,
+        title: dto.title.trim(),
+        description: dto.description?.trim() || null,
+        difficulty_level: normalizeActivityDifficulty(dto.difficulty_level),
+      },
     });
-    const saved = await this.activities.save(entity);
     await this.replaceVideos(saved.id, urls);
     await this.replaceTrainers(saved.id, trainerIds);
     return this.getOne(saved.id);
@@ -191,28 +181,30 @@ export class ActivitiesService {
     dto: UpdateActivityDto,
     actor: { userId: number; role_name: string },
   ) {
-    const a = await this.activities.findOne({ where: { id } });
+    const a = await this.prisma.activity.findUnique({ where: { id } });
     if (!a) throw new NotFoundException('Actividad no encontrada.');
+
+    const data: Prisma.ActivityUpdateInput = {};
 
     if (dto.category_id != null) {
       await this.assertCategory(dto.category_id);
-      a.category = { id: dto.category_id } as ActivityCategory;
+      data.category = { connect: { id: dto.category_id } };
     }
     if (dto.title !== undefined) {
       const t = dto.title.trim();
       if (!t) throw new BadRequestException('El título no puede quedar vacío.');
-      a.title = t;
+      data.title = t;
     }
     if (dto.description !== undefined) {
-      a.description =
+      data.description =
         dto.description === null || dto.description === ''
           ? null
           : dto.description.trim() || null;
     }
     if (dto.difficulty_level !== undefined) {
-      a.difficulty_level = normalizeActivityDifficulty(dto.difficulty_level);
+      data.difficulty_level = normalizeActivityDifficulty(dto.difficulty_level);
     }
-    await this.activities.save(a);
+    await this.prisma.activity.update({ where: { id }, data });
 
     if (dto.video_urls !== undefined) {
       await this.replaceVideos(id, normUrls(dto.video_urls));
@@ -230,11 +222,14 @@ export class ActivitiesService {
   }
 
   async remove(id: number): Promise<void> {
-    const r = await this.activities.delete({ id });
-    if (!r.affected) throw new NotFoundException('Actividad no encontrada.');
+    try {
+      await this.prisma.activity.delete({ where: { id } });
+    } catch {
+      throw new NotFoundException('Actividad no encontrada.');
+    }
   }
 
-  private serializeDetail(a: Activity) {
+  private serializeDetail(a: ActivityWithRelations) {
     const vids = [...(a.videos ?? [])].sort(
       (x, y) => x.sort_order - y.sort_order,
     );
@@ -266,7 +261,9 @@ export class ActivitiesService {
   }
 
   private async assertCategory(id: number): Promise<void> {
-    const c = await this.categories.findOne({ where: { id } });
+    const c = await this.prisma.activityCategory.findUnique({
+      where: { id },
+    });
     if (!c) throw new BadRequestException('Categoría no encontrada.');
   }
 
@@ -284,7 +281,9 @@ export class ActivitiesService {
         }
       }
     }
-    const rows = await this.members.findBy({ id: In(ids) });
+    const rows = await this.prisma.gymMember.findMany({
+      where: { id: { in: ids } },
+    });
     if (rows.length !== ids.length) {
       throw new BadRequestException('Algún entrenador no existe.');
     }
@@ -298,41 +297,32 @@ export class ActivitiesService {
   }
 
   private async replaceVideos(activityId: number, urls: string[]): Promise<void> {
-    await this.videos
-      .createQueryBuilder()
-      .delete()
-      .from(ActivityVideo)
-      .where('activity_id = :id', { id: activityId })
-      .execute();
+    await this.prisma.activityVideo.deleteMany({
+      where: { activity_id: activityId },
+    });
     if (urls.length === 0) return;
-    await this.videos.save(
-      urls.map((url, i) =>
-        this.videos.create({
-          activity: { id: activityId } as Activity,
-          url,
-          sort_order: i,
-        }),
-      ),
-    );
+    await this.prisma.activityVideo.createMany({
+      data: urls.map((url, i) => ({
+        activity_id: activityId,
+        url,
+        sort_order: i,
+      })),
+    });
   }
 
   private async replaceTrainers(
     activityId: number,
     memberIds: number[],
   ): Promise<void> {
-    await this.trainers
-      .createQueryBuilder()
-      .delete()
-      .from(ActivityTrainer)
-      .where('activity_id = :id', { id: activityId })
-      .execute();
-    await this.trainers.save(
-      memberIds.map((id) =>
-        this.trainers.create({
-          activity: { id: activityId } as Activity,
-          member: { id } as GymMember,
-        }),
-      ),
-    );
+    await this.prisma.activityTrainer.deleteMany({
+      where: { activity_id: activityId },
+    });
+    if (memberIds.length === 0) return;
+    await this.prisma.activityTrainer.createMany({
+      data: memberIds.map((trainer_member_id) => ({
+        activity_id: activityId,
+        trainer_member_id,
+      })),
+    });
   }
 }

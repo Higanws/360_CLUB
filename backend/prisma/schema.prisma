@@ -1,6 +1,5 @@
-// Esquema Club360 MVP — mantener alineado con `src/entities/*.entity.ts`
-// y `database/schema/schema_mysql.sql`. Datos demo: `database/seed/seed_mvp.sql`.
-// TypeORM es el cliente de runtime en Nest; Prisma solo genera cliente (`npm run db:generate`).
+// Esquema Club360 MVP — fuente de verdad del DDL (Prisma Migrate).
+// Seed demo: `prisma/seed.ts` vía PrismaClient.
 
 generator client {
   provider = "prisma-client-js"
@@ -116,6 +115,9 @@ model GymMember {
   training_assignment_members TrainingAssignmentMember[]
   training_assignment_trainers TrainingAssignmentTrainer[]
 
+  @@index([assign_staff_mem], map: "idx_gym_member_assign_staff")
+  @@index([first_name, last_name], map: "idx_gym_member_name")
+  @@index([username], map: "idx_gym_member_username")
   @@map("gym_member")
 }
 
@@ -144,6 +146,7 @@ model MembershipPayment {
 
   @@index([member_id], map: "idx_membership_payment_member")
   @@index([membership_id], map: "idx_membership_payment_plan")
+  @@index([end_date], map: "idx_membership_payment_end_date")
   @@map("membership_payment")
 }
 
@@ -344,5 +347,6 @@ model ClubAccessLog {
 
   @@index([member_id, access_date], map: "idx_cal_member_date")
   @@index([staff_actor_id], map: "idx_cal_staff")
+  @@index([access_date, outcome], map: "idx_club_access_log_date_outcome")
   @@map("club_access_log")
 }

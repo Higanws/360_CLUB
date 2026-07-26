@@ -1,260 +1,235 @@
-import { Injectable, Logger } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  Logger,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import * as fs from 'fs/promises';
+import { execFile } from 'child_process';
+import { promises as fs } from 'fs';
 import * as path from 'path';
-import { execSync } from 'child_process';
-import { pipeline } from 'stream/promises';
-import * as zlib from 'zlib';
-import { createReadStream, createWriteStream } from 'fs';
+import { promisify } from 'util';
+import { PrismaService } from '../prisma.service';
+import { DbMaintenanceService } from './db-maintenance.service';
 
-export interface BackupMetadata {
+const execFileAsync = promisify(execFile);
+
+export type BackupFileInfo = {
   filename: string;
-  timestamp: number;
   size: number;
-  status: 'completed' | 'failed';
-  errorMessage?: string;
-}
+  modified_at: string;
+};
 
-/**
- * Servicio de gestión de backups:
- * - Crea backups comprimidos de MySQL vía mysqldump
- * - Almacena metadatos en JSON
- * - Valida integridad
- */
 @Injectable()
 export class BackupService {
   private readonly logger = new Logger(BackupService.name);
   private readonly backupDir: string;
-  private readonly metadataFile: string;
+  private readonly dbContainer: string;
+  private opLock = false;
 
-  constructor(private config: ConfigService) {
-    this.backupDir = path.join(
-      process.cwd(),
-      'data',
-      'backups',
-    );
-    this.metadataFile = path.join(this.backupDir, 'backups.json');
-  }
-
-  /**
-   * Crear backup comprimido de la BD.
-   * Ejecuta: mysqldump | gzip → backup_TIMESTAMP.sql.gz
-   */
-  async createBackup(): Promise<BackupMetadata> {
-    try {
-      await this.ensureBackupDir();
-
-      const timestamp = Date.now();
-      const date = new Date(timestamp).toISOString().split('T')[0];
-      const time = new Date(timestamp).toISOString().split('T')[1].split('.')[0].replace(/:/g, '-');
-      const filename = `backup_${date}_${time}.sql.gz`;
-      const backupPath = path.join(this.backupDir, filename);
-
-      const dbHost = this.config.get<string>('DATABASE_HOST', 'localhost');
-      const dbPort = this.config.get<number>('DATABASE_PORT', 3306);
-      const dbUser = this.config.get<string>('DATABASE_USER', 'root');
-      const dbPass = this.config.get<string>('DATABASE_PASSWORD', '');
-      const dbName = this.config.get<string>('DATABASE_NAME', 'club360');
-
-      this.logger.log(`[BACKUP] Iniciando backup: ${filename}`);
-
-      // Ejecutar mysqldump y comprimir con gzip
-      const cmd = `mysqldump -h ${dbHost} -P ${dbPort} -u ${dbUser} -p"${dbPass}" ${dbName} | gzip > "${backupPath}"`;
-      execSync(cmd, { stdio: 'pipe', shell: '/bin/bash' });
-
-      // Validar que el archivo se creó
-      const stats = await fs.stat(backupPath);
-      const size = stats.size;
-
-      const metadata: BackupMetadata = {
-        filename,
-        timestamp,
-        size,
-        status: 'completed',
-      };
-
-      // Registrar en metadatos
-      await this.appendBackupMetadata(metadata);
-
-      this.logger.log(
-        `[BACKUP] ✓ Completado: ${filename} (${this.formatBytes(size)})`,
-      );
-
-      return metadata;
-    } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : String(error);
-      this.logger.error(`[BACKUP] ✗ Error: ${errorMsg}`);
-
-      const metadata: BackupMetadata = {
-        filename: `backup_failed_${Date.now()}`,
-        timestamp: Date.now(),
-        size: 0,
-        status: 'failed',
-        errorMessage: errorMsg,
-      };
-
-      await this.appendBackupMetadata(metadata);
-      throw error;
+  constructor(
+    private readonly config: ConfigService,
+    private readonly prisma: PrismaService,
+    private readonly maintenance: DbMaintenanceService,
+  ) {
+    this.backupDir =
+      this.config.get<string>('BACKUP_DIR')?.trim() ||
+      path.resolve(process.cwd(), '..', 'Backups');
+    // Si cwd es backend/, subir un nivel; si es raíz del repo, Backups ahí.
+    if (!this.config.get<string>('BACKUP_DIR')?.trim()) {
+      const fromBackend = path.resolve(process.cwd(), '..', 'Backups');
+      const fromRoot = path.resolve(process.cwd(), 'Backups');
+      this.backupDir = process.cwd().endsWith('backend')
+        ? fromBackend
+        : fromRoot;
     }
+    this.dbContainer =
+      this.config.get<string>('CLUB360_DB_CONTAINER')?.trim() || 'club360-db';
+  }
+
+  getBackupDir(): string {
+    return this.backupDir;
+  }
+
+  async listBackups(): Promise<BackupFileInfo[]> {
+    await fs.mkdir(this.backupDir, { recursive: true });
+    const names = await fs.readdir(this.backupDir);
+    const out: BackupFileInfo[] = [];
+    for (const name of names) {
+      if (!name.startsWith('club360_')) continue;
+      if (!name.endsWith('.sql.gz') && !name.endsWith('.sql')) continue;
+      const full = path.join(this.backupDir, name);
+      const st = await fs.stat(full);
+      if (!st.isFile()) continue;
+      out.push({
+        filename: name,
+        size: st.size,
+        modified_at: st.mtime.toISOString(),
+      });
+    }
+    out.sort((a, b) => b.modified_at.localeCompare(a.modified_at));
+    return out;
   }
 
   /**
-   * Eliminar backups más antiguos que daysToKeep.
-   * Mantiene backups recientes y limpia espacio.
+   * Genera backup: app → 503 (maintenance), Prisma disconnect,
+   * DB read_only + dump en contenedor, luego reconectar.
    */
-  async cleanupOldBackups(daysToKeep: number = 30): Promise<void> {
+  async createBackup(): Promise<BackupFileInfo> {
+    this.assertIdle();
+    this.opLock = true;
+    const before = new Set((await this.listBackups()).map((b) => b.filename));
+
     try {
-      await this.ensureBackupDir();
+      this.maintenance.enter('backup', 'Generando dump SQL');
+      await this.disconnectPrisma();
 
-      const cutoffTime = Date.now() - daysToKeep * 24 * 60 * 60 * 1000;
-      const files = await fs.readdir(this.backupDir);
+      await this.runInDbContainer(['/scripts/backup.sh']);
 
-      let deletedCount = 0;
-      let freedSpace = 0;
+      await this.reconnectPrisma();
+      this.maintenance.exit();
 
-      for (const file of files) {
-        // Saltar metadata
-        if (file === 'backups.json' || !file.endsWith('.sql.gz')) {
-          continue;
-        }
-
-        const filePath = path.join(this.backupDir, file);
-        const stats = await fs.stat(filePath);
-
-        if (stats.mtimeMs < cutoffTime) {
-          await fs.unlink(filePath);
-          deletedCount++;
-          freedSpace += stats.size;
-          this.logger.log(`[CLEANUP] Eliminado: ${file}`);
-        }
+      const after = await this.listBackups();
+      const created = after.find((b) => !before.has(b.filename));
+      if (!created) {
+        throw new ServiceUnavailableException(
+          'El dump terminó pero no se encontró el archivo en Backups/.',
+        );
       }
-
-      // Actualizar metadata: marcar como deleted
-      await this.updateDeletedBackups(cutoffTime);
-
-      this.logger.log(
-        `[CLEANUP] Completado: ${deletedCount} archivos eliminados (${this.formatBytes(freedSpace)} liberados)`,
-      );
-    } catch (error) {
-      this.logger.error(
-        `[CLEANUP] Error: ${error instanceof Error ? error.message : error}`,
-      );
+      this.logger.log(`Backup OK: ${created.filename}`);
+      return created;
+    } catch (e) {
+      await this.safeRecover();
+      throw e;
+    } finally {
+      this.opLock = false;
     }
   }
 
   /**
-   * Listar backups disponibles ordenados por fecha.
+   * Restaura desde un archivo ya presente en Backups/ o subido a esa carpeta.
+   * La SPA sigue arriba; /api responde 503 hasta terminar.
    */
-  async listBackups(): Promise<BackupMetadata[]> {
-    try {
-      await this.ensureBackupDir();
-
-      if (!(await this.fileExists(this.metadataFile))) {
-        return [];
-      }
-
-      const content = await fs.readFile(this.metadataFile, 'utf-8');
-      const data = JSON.parse(content);
-
-      return Array.isArray(data) ? data : [];
-    } catch (error) {
-      this.logger.warn(`[BACKUPS] Error leyendo metadata: ${error}`);
-      return [];
-    }
-  }
-
-  /**
-   * Obtener tamaño total de backups.
-   */
-  async getBackupsTotalSize(): Promise<number> {
-    try {
-      await this.ensureBackupDir();
-
-      const files = await fs.readdir(this.backupDir);
-      let total = 0;
-
-      for (const file of files) {
-        if (file.endsWith('.sql.gz')) {
-          const stats = await fs.stat(path.join(this.backupDir, file));
-          total += stats.size;
-        }
-      }
-
-      return total;
-    } catch (error) {
-      this.logger.warn(`[BACKUPS] Error calculando tamaño: ${error}`);
-      return 0;
-    }
-  }
-
-  // ============ Helpers privados ============
-
-  private async ensureBackupDir(): Promise<void> {
-    try {
-      await fs.mkdir(this.backupDir, { recursive: true });
-    } catch (error) {
-      this.logger.error(`Error creando directorio de backups: ${error}`);
-    }
-  }
-
-  private async appendBackupMetadata(metadata: BackupMetadata): Promise<void> {
-    try {
-      let backups: BackupMetadata[] = [];
-
-      if (await this.fileExists(this.metadataFile)) {
-        const content = await fs.readFile(this.metadataFile, 'utf-8');
-        backups = JSON.parse(content);
-      }
-
-      backups.push(metadata);
-
-      // Mantener solo los últimos 100 registros en metadata
-      if (backups.length > 100) {
-        backups = backups.slice(-100);
-      }
-
-      await fs.writeFile(
-        this.metadataFile,
-        JSON.stringify(backups, null, 2),
-        'utf-8',
+  async restoreFromFilename(filename: string): Promise<{ filename: string }> {
+    this.assertIdle();
+    const safe = path.basename(filename);
+    if (
+      safe !== filename ||
+      !safe.startsWith('club360_') ||
+      !(safe.endsWith('.sql.gz') || safe.endsWith('.sql'))
+    ) {
+      throw new BadRequestException(
+        'Nombre inválido. Usá un archivo club360_*.sql.gz de Backups/.',
       );
-    } catch (error) {
-      this.logger.error(`Error escribiendo metadata: ${error}`);
     }
-  }
-
-  private async updateDeletedBackups(cutoffTime: number): Promise<void> {
+    const full = path.join(this.backupDir, safe);
     try {
-      let backups = await this.listBackups();
-
-      backups = backups.map((b) =>
-        b.timestamp < cutoffTime ? { ...b, status: 'deleted' as const } : b,
-      );
-
-      await fs.writeFile(
-        this.metadataFile,
-        JSON.stringify(backups, null, 2),
-        'utf-8',
-      );
-    } catch (error) {
-      this.logger.error(`Error actualizando metadata: ${error}`);
-    }
-  }
-
-  private async fileExists(filePath: string): Promise<boolean> {
-    try {
-      await fs.access(filePath);
-      return true;
+      await fs.access(full);
     } catch {
-      return false;
+      throw new BadRequestException(`No existe ${safe} en Backups/.`);
+    }
+
+    this.opLock = true;
+    try {
+      this.maintenance.enter('restore', `Restaurando ${safe}`);
+      await this.disconnectPrisma();
+
+      // El archivo ya está en el bind-mount /backups del contenedor db
+      await this.runInDbContainer(['/scripts/restore.sh', `/backups/${safe}`]);
+
+      await this.reconnectPrisma();
+      this.maintenance.exit();
+      this.logger.log(`Restore OK: ${safe}`);
+      return { filename: safe };
+    } catch (e) {
+      await this.safeRecover();
+      throw e;
+    } finally {
+      this.opLock = false;
     }
   }
 
-  private formatBytes(bytes: number): string {
-    if (bytes === 0) return '0 B';
-    const k = 1024;
-    const sizes = ['B', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  async saveUploadAndRestore(
+    file: Express.Multer.File,
+  ): Promise<{ filename: string }> {
+    if (!file?.buffer?.length && !file?.path) {
+      throw new BadRequestException('Falta el archivo de backup.');
+    }
+    const original = path.basename(file.originalname || 'upload.sql.gz');
+    if (!original.endsWith('.sql.gz') && !original.endsWith('.sql')) {
+      throw new BadRequestException('Solo se aceptan .sql.gz o .sql');
+    }
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const filename = original.startsWith('club360_')
+      ? original
+      : `club360_upload_${stamp}${original.endsWith('.sql.gz') ? '.sql.gz' : '.sql'}`;
+    await fs.mkdir(this.backupDir, { recursive: true });
+    const dest = path.join(this.backupDir, filename);
+    if (file.buffer?.length) {
+      await fs.writeFile(dest, file.buffer);
+    } else if (file.path) {
+      await fs.copyFile(file.path, dest);
+    }
+    return this.restoreFromFilename(filename);
+  }
+
+  private assertIdle(): void {
+    if (this.opLock || this.maintenance.isActive()) {
+      throw new ConflictException(
+        'Ya hay un backup o restore en curso. Esperá a que termine.',
+      );
+    }
+  }
+
+  private async disconnectPrisma(): Promise<void> {
+    try {
+      await this.prisma.$disconnect();
+      this.logger.log('Prisma desconectado (maintenance)');
+    } catch (e) {
+      this.logger.warn(
+        `Prisma disconnect: ${e instanceof Error ? e.message : e}`,
+      );
+    }
+  }
+
+  private async reconnectPrisma(): Promise<void> {
+    await this.prisma.$connect();
+    await this.prisma.$queryRaw`SELECT 1`;
+    this.logger.log('Prisma reconectado');
+  }
+
+  private async safeRecover(): Promise<void> {
+    try {
+      await this.reconnectPrisma();
+    } catch (e) {
+      this.logger.error(
+        `No se pudo reconectar Prisma: ${e instanceof Error ? e.message : e}`,
+      );
+    }
+    this.maintenance.exit();
+  }
+
+  private async runInDbContainer(cmd: string[]): Promise<void> {
+    this.logger.log(`docker exec ${this.dbContainer} ${cmd.join(' ')}`);
+    try {
+      const { stdout, stderr } = await execFileAsync(
+        'docker',
+        ['exec', this.dbContainer, ...cmd],
+        {
+          maxBuffer: 20 * 1024 * 1024,
+          env: process.env,
+        },
+      );
+      if (stdout?.trim()) this.logger.log(stdout.trim());
+      if (stderr?.trim()) this.logger.warn(stderr.trim());
+    } catch (e: unknown) {
+      const err = e as { stderr?: string; message?: string };
+      const msg = err.stderr?.trim() || err.message || String(e);
+      this.logger.error(`docker exec falló: ${msg}`);
+      throw new ServiceUnavailableException(
+        `No se pudo ejecutar en ${this.dbContainer}: ${msg}`,
+      );
+    }
   }
 }

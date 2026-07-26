@@ -7,10 +7,9 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
-import { InjectRepository } from '@nestjs/typeorm';
 import * as bcrypt from 'bcrypt';
-import { Repository } from 'typeorm';
-import { GymMember } from '../entities/gym-member.entity';
+import type { GymMember } from '@prisma/client';
+import { PrismaService } from '../database/prisma.service';
 import { LoginDto } from './dto/login.dto';
 import { toUserProfileDto, type UserProfileDto } from './user-profile';
 
@@ -29,8 +28,7 @@ export class AuthService {
   private readonly logger = new Logger(AuthService.name);
 
   constructor(
-    @InjectRepository(GymMember)
-    private readonly members: Repository<GymMember>,
+    private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
     private readonly config: ConfigService,
   ) {}
@@ -98,7 +96,7 @@ export class AuthService {
 
   async validateCredentials(dto: LoginDto): Promise<GymMember> {
     const username = dto.username.trim();
-    const member = await this.members.findOne({
+    const member = await this.prisma.gymMember.findFirst({
       where: { username },
     });
 
@@ -186,7 +184,7 @@ export class AuthService {
       throw new UnauthorizedException('Token incorrecto.');
     }
 
-    const member = await this.members.findOne({
+    const member = await this.prisma.gymMember.findUnique({
       where: { id: decoded.sub },
     });
 
@@ -199,7 +197,9 @@ export class AuthService {
   }
 
   async getProfile(userId: number): Promise<UserProfileDto> {
-    const member = await this.members.findOne({ where: { id: userId } });
+    const member = await this.prisma.gymMember.findUnique({
+      where: { id: userId },
+    });
     if (!member) {
       throw new UnauthorizedException();
     }

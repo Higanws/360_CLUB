@@ -1,37 +1,25 @@
-import { Module, OnModuleInit } from '@nestjs/common';
-import { ConfigModule, ConfigService } from '@nestjs/config';
+import { Global, Module } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
 import { PrismaService } from './prisma.service';
-import { BackupScheduler } from './backup/backup.scheduler';
-import { BackupCleanupScheduler } from './backup/backup-cleanup.scheduler';
 import { BackupService } from './backup/backup.service';
+import { BackupController } from './backup/backup.controller';
+import { DbMaintenanceService } from './backup/db-maintenance.service';
+import { DbMaintenanceGuard } from './backup/db-maintenance.guard';
 
 /**
- * Módulo unificado de persistencia:
- * - Prisma ORM como cliente único
- * - Migraciones automáticas
- * - Gestión de backups con servicios scheduled
+ * Persistencia Prisma + API de backups (admin).
+ * Durante backup/restore: maintenance → 503 en el resto de la API.
+ * No hay cola de requests offline; el cliente debe reintentar.
  */
+@Global()
 @Module({
-  imports: [ConfigModule],
+  controllers: [BackupController],
   providers: [
     PrismaService,
+    DbMaintenanceService,
     BackupService,
-    BackupScheduler,
-    BackupCleanupScheduler,
+    { provide: APP_GUARD, useClass: DbMaintenanceGuard },
   ],
-  exports: [PrismaService, BackupService],
+  exports: [PrismaService, DbMaintenanceService, BackupService],
 })
-export class DatabaseModule implements OnModuleInit {
-  constructor(private prisma: PrismaService) {}
-
-  async onModuleInit() {
-    // Validar conexión + ejecutar migraciones en startup
-    try {
-      await this.prisma.$queryRaw`SELECT 1 AS ok`;
-      console.log('[DB] ✓ Conexión a base de datos validada');
-    } catch (error) {
-      console.error('[DB] ✗ Error de conexión:', error);
-      throw error;
-    }
-  }
-}
+export class DatabaseModule {}

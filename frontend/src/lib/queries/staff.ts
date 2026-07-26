@@ -21,13 +21,19 @@ export type StaffPayload = {
   };
 };
 
-export function useStaffList(page = 1, pageSize = 25, enabled = true) {
+export function useStaffList(
+  page = 1,
+  pageSize = 25,
+  q = '',
+  enabled = true,
+) {
   return useQuery({
-    queryKey: ['staff', 'list', page, pageSize],
+    queryKey: ['staff', 'list', page, pageSize, q],
     queryFn: async () => {
-      const { data } = await api.get<StaffPayload>('/staff', {
-        params: { page, pageSize },
-      });
+      const params: Record<string, string | number> = { page, pageSize };
+      const qTrim = q.trim();
+      if (qTrim) params.q = qTrim;
+      const { data } = await api.get<StaffPayload>('/staff', { params });
       return data;
     },
     enabled,

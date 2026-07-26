@@ -1,6 +1,3 @@
-# Artefactos SQL
+# Backend database (legacy SQL)
 
-Documentación unificada: **[../../docs/base-de-datos.md](../../docs/base-de-datos.md)**.
-
-- `schema/schema_mysql.sql` — DDL
-- `seed/seed_mvp.sql` — datos demo
+El esquema canónico es Prisma. Ver **[`DOCUMENTACION.md`](../../DOCUMENTACION.md)**.

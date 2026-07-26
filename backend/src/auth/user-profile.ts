@@ -1,4 +1,4 @@
-import { GymMember } from '../entities/gym-member.entity';
+import type { GymMember } from '@prisma/client';
 import { normalizeClubRole } from '../shared/domain/club/club-roles';
 
 /** Perfil expuesto al cliente tras login /auth/me (sin datos sensibles de gestión). */
@@ -11,7 +11,12 @@ export type UserProfileDto = {
   email: string | null;
 };
 
-export function toUserProfileDto(member: GymMember): UserProfileDto {
+export function toUserProfileDto(
+  member: Pick<
+    GymMember,
+    'id' | 'username' | 'role_name' | 'first_name' | 'last_name' | 'email'
+  >,
+): UserProfileDto {
   const role = normalizeClubRole(member.role_name);
   if (role === 'member') {
     return {

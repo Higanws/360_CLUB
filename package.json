@@ -15,6 +15,9 @@
     "test:modules": "npm run test:modules --prefix backend && npm run test:modules --prefix frontend",
     "mcp": "npm run dev --prefix mcp-server",
     "mcp:build": "npm run build --prefix mcp-server",
-    "mcp:test": "npm test --prefix mcp-server"
+    "mcp:test": "npm test --prefix mcp-server",
+    "db:up": "docker compose -f services/database/docker-compose.yml up -d --build",
+    "db:down": "docker compose -f services/database/docker-compose.yml down",
+    "db:backup": "docker compose -f services/database/docker-compose.yml exec -T db /scripts/backup.sh"
   }
 }

@@ -176,15 +176,16 @@ export function MembershipPlansPage() {
       {error ? <p className="login-error">{error}</p> : null}
 
       <div className="pay-toolbar">
-        <span className="muted">Mostrar entradas</span>
         <MmSearchField
-          label="Buscar:"
+          grow
+          label="Buscar"
           value={search}
           onChange={(e) => {
             setSearch(e.target.value);
             setPage(0);
           }}
-          placeholder="Nombre o plan de cuotas"
+          placeholder="Nombre o plan de cuotas…"
+          autoComplete="off"
         />
       </div>
 

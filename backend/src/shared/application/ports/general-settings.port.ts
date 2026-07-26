@@ -1,4 +1,4 @@
-import type { GeneralSetting } from '../../../entities/general-setting.entity';
+import type { GeneralSetting } from '@prisma/client';
 
 export interface GeneralSettingsRepository {
   getPrimary(): Promise<GeneralSetting | null>;

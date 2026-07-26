@@ -1,6 +1,5 @@
 import { ForbiddenException } from '@nestjs/common';
-import { SelectQueryBuilder } from 'typeorm';
-import { GymMember } from '../../../entities/gym-member.entity';
+import type { GymMember } from '@prisma/client';
 import {
   isAdministratorRole,
   isStaffRole,
@@ -17,7 +16,10 @@ export function staffMustUseOwnMembersOnly(actor: ClubActor): boolean {
   return isStaffRole(actor.role_name) && !isAdministratorRole(actor.role_name);
 }
 
-export function assertStaffOwnsMember(actor: ClubActor, member: GymMember): void {
+export function assertStaffOwnsMember(
+  actor: ClubActor,
+  member: Pick<GymMember, 'assign_staff_mem'>,
+): void {
   if (!staffMustUseOwnMembersOnly(actor)) {
     return;
   }
@@ -26,19 +28,6 @@ export function assertStaffOwnsMember(actor: ClubActor, member: GymMember): void
       'Este socio no está asignado a ti como entrenador o supervisor.',
     );
   }
-}
-
-export function applyStaffMemberScope<T extends GymMember>(
-  qb: SelectQueryBuilder<T>,
-  actor: ClubActor,
-  memberAlias: string,
-): void {
-  if (!staffMustUseOwnMembersOnly(actor)) {
-    return;
-  }
-  qb.andWhere(`${memberAlias}.assign_staff_mem = :staffActorId`, {
-    staffActorId: actor.userId,
-  });
 }
 
 export function assertAdministrator(actor: ClubActor): void {

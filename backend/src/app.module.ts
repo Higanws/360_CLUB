@@ -4,7 +4,6 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { join } from 'path';
 import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
-import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthModule } from './auth/auth.module';
 import { HealthModule } from './health/health.module';
 import { HomeModule } from './home/home.module';
@@ -23,18 +22,14 @@ import { InstallModule } from './install/install.module';
 import { isInstallComplete } from './install/install-state';
 import { IdempotencyModule } from './idempotency/idempotency.module';
 import { SettingsModule } from './settings/settings.module';
-import { createMysqlTypeOrmOptions } from './infrastructure/persistence/mysql-typeorm.factory';
+import { DatabaseModule } from './database/database.module';
 import { ClubSharedModule } from './shared/club-shared.module';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
 
 const dbStack = isInstallComplete()
   ? [
+      DatabaseModule,
       ClubSharedModule,
-      TypeOrmModule.forRootAsync({
-        imports: [ConfigModule],
-        inject: [ConfigService],
-        useFactory: createMysqlTypeOrmOptions,
-      }),
       HealthModule,
       AuthModule,
       SettingsModule,

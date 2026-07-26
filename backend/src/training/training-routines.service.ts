@@ -3,11 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository } from 'typeorm';
-import { Activity } from '../entities/activity.entity';
-import { TrainingRoutine } from '../entities/training-routine.entity';
-import { TrainingRoutineActivity } from '../entities/training-routine-activity.entity';
+import { PrismaService } from '../database/prisma.service';
 import { normalizeActivityDifficulty } from '../activities/activity-difficulty';
 import {
   computeRoutineDifficulty,
@@ -29,77 +25,56 @@ type NormalizedLine = {
 
 @Injectable()
 export class TrainingRoutinesService {
-  constructor(
-    @InjectRepository(TrainingRoutine)
-    private readonly routines: Repository<TrainingRoutine>,
-    @InjectRepository(TrainingRoutineActivity)
-    private readonly lines: Repository<TrainingRoutineActivity>,
-    @InjectRepository(Activity)
-    private readonly activities: Repository<Activity>,
-  ) {}
+  constructor(private readonly prisma: PrismaService) {}
 
   async list(page = 1, pageSize = 25, q?: string) {
     const ps = Math.min(100, Math.max(1, pageSize));
     const pg = Math.max(1, page);
 
-    const idQb = this.routines
-      .createQueryBuilder('r')
-      .select('r.id', 'id')
-      .orderBy('r.id', 'DESC');
     const qTrim = q?.trim();
-    if (qTrim) {
-      const like = `%${qTrim.replace(/[%_\\]/g, '\\$&')}%`;
-      idQb.andWhere('r.title LIKE :like', { like });
-    }
+    const where = qTrim ? { title: { contains: qTrim } } : {};
 
-    const total = await idQb.clone().getCount();
-    const idRows = await idQb
-      .offset(paginationSkip(pg, ps))
-      .limit(ps)
-      .getRawMany<{ id: number }>();
-    const ids = idRows.map((r) => Number(r.id)).filter((id) => id > 0);
-    if (!ids.length) {
-      return { routines: [], meta: buildPageMeta(total, pg, ps) };
-    }
-
-    const rows = await this.routines.find({
-      where: { id: In(ids) },
-      order: { id: 'DESC' },
+    const total = await this.prisma.trainingRoutine.count({ where });
+    const rows = await this.prisma.trainingRoutine.findMany({
+      where,
+      orderBy: { id: 'desc' },
+      skip: paginationSkip(pg, ps),
+      take: ps,
     });
-    const lineCounts = await this.lines
-      .createQueryBuilder('l')
-      .select('l.routine_id', 'routine_id')
-      .addSelect('COUNT(l.id)', 'cnt')
-      .where('l.routine_id IN (:...ids)', { ids })
-      .groupBy('l.routine_id')
-      .getRawMany<{ routine_id: number; cnt: string | number }>();
+
+    const ids = rows.map((r) => r.id);
+    const lineCounts = ids.length
+      ? await this.prisma.trainingRoutineActivity.groupBy({
+          by: ['routine_id'],
+          where: { routine_id: { in: ids } },
+          _count: { id: true },
+        })
+      : [];
     const countByRoutine = new Map(
-      lineCounts.map((r) => [Number(r.routine_id), Number(r.cnt)]),
+      lineCounts.map((r) => [r.routine_id, r._count.id]),
     );
 
-    const byId = new Map(rows.map((r) => [r.id, r]));
-    const routines = ids
-      .map((id) => byId.get(id))
-      .filter((r): r is TrainingRoutine => r != null)
-      .map((r) => ({
-        id: r.id,
-        title: r.title,
-        description: r.description,
-        difficulty_level: normalizeRoutineDifficulty(r.difficulty_level),
-        exercise_count: countByRoutine.get(r.id) ?? 0,
-        created_at:
-          r.created_at instanceof Date
-            ? r.created_at.toISOString()
-            : String(r.created_at),
-      }));
+    const routines = rows.map((r) => ({
+      id: r.id,
+      title: r.title,
+      description: r.description,
+      difficulty_level: normalizeRoutineDifficulty(r.difficulty_level),
+      exercise_count: countByRoutine.get(r.id) ?? 0,
+      created_at:
+        r.created_at instanceof Date
+          ? r.created_at.toISOString()
+          : String(r.created_at),
+    }));
 
     return { routines, meta: buildPageMeta(total, pg, ps) };
   }
 
   async getOne(id: number) {
-    const r = await this.routines.findOne({
+    const r = await this.prisma.trainingRoutine.findUnique({
       where: { id },
-      relations: ['lines', 'lines.activity', 'lines.activity.category'],
+      include: {
+        lines: { include: { activity: { include: { category: true } } } },
+      },
     });
     if (!r) throw new NotFoundException('Rutina no encontrada.');
     const ordered = [...(r.lines ?? [])].sort(
@@ -138,26 +113,29 @@ export class TrainingRoutinesService {
     const normalized = this.normalizeLines(dto.lines);
     const orderedIds = normalized.map((row) => row.activity_id);
     const difficulty = await this.computeDifficultyForOrderedIds(orderedIds);
-    const row = this.routines.create({
-      title: dto.title.trim(),
-      description: dto.description?.trim() || null,
-      difficulty_level: difficulty,
+    const saved = await this.prisma.trainingRoutine.create({
+      data: {
+        title: dto.title.trim(),
+        description: dto.description?.trim() || null,
+        difficulty_level: difficulty,
+      },
     });
-    const saved = await this.routines.save(row);
     await this.replaceLines(saved.id, normalized);
     return this.getOne(saved.id);
   }
 
   async update(id: number, dto: UpdateTrainingRoutineDto) {
-    const r = await this.routines.findOne({ where: { id } });
+    const r = await this.prisma.trainingRoutine.findUnique({ where: { id } });
     if (!r) throw new NotFoundException('Rutina no encontrada.');
+
+    const data: { title?: string; description?: string | null; difficulty_level?: string } = {};
     if (dto.title !== undefined) {
       const t = dto.title.trim();
       if (!t) throw new BadRequestException('El título no puede quedar vacío.');
-      r.title = t;
+      data.title = t;
     }
     if (dto.description !== undefined) {
-      r.description =
+      data.description =
         dto.description === null || dto.description === ''
           ? null
           : dto.description.trim() || null;
@@ -165,17 +143,22 @@ export class TrainingRoutinesService {
     if (dto.lines !== undefined) {
       const normalized = this.normalizeLines(dto.lines);
       const orderedIds = normalized.map((row) => row.activity_id);
-      r.difficulty_level =
+      data.difficulty_level =
         await this.computeDifficultyForOrderedIds(orderedIds);
       await this.replaceLines(id, normalized);
     }
-    await this.routines.save(r);
+    if (Object.keys(data).length > 0) {
+      await this.prisma.trainingRoutine.update({ where: { id }, data });
+    }
     return this.getOne(id);
   }
 
   async remove(id: number): Promise<void> {
-    const res = await this.routines.delete({ id });
-    if (!res.affected) throw new NotFoundException('Rutina no encontrada.');
+    try {
+      await this.prisma.trainingRoutine.delete({ where: { id } });
+    } catch {
+      throw new NotFoundException('Rutina no encontrada.');
+    }
   }
 
   private normalizeLines(lines: TrainingRoutineLineDto[]): NormalizedLine[] {
@@ -213,8 +196,8 @@ export class TrainingRoutinesService {
   private async computeDifficultyForOrderedIds(
     orderedActivityIds: number[],
   ): Promise<string> {
-    const acts = await this.activities.findBy({
-      id: In(orderedActivityIds),
+    const acts = await this.prisma.activity.findMany({
+      where: { id: { in: orderedActivityIds } },
     });
     if (acts.length !== orderedActivityIds.length) {
       throw new BadRequestException('Alguna actividad no existe.');
@@ -230,22 +213,17 @@ export class TrainingRoutinesService {
     routineId: number,
     rows: NormalizedLine[],
   ): Promise<void> {
-    await this.lines
-      .createQueryBuilder()
-      .delete()
-      .from(TrainingRoutineActivity)
-      .where('routine_id = :id', { id: routineId })
-      .execute();
-    await this.lines.save(
-      rows.map((row, sort_order) =>
-        this.lines.create({
-          routine_id: routineId,
-          activity_id: row.activity_id,
-          sort_order,
-          weight_kg: row.weight_kg,
-          weekdays_mask: row.weekdays_mask,
-        }),
-      ),
-    );
+    await this.prisma.trainingRoutineActivity.deleteMany({
+      where: { routine_id: routineId },
+    });
+    await this.prisma.trainingRoutineActivity.createMany({
+      data: rows.map((row, sort_order) => ({
+        routine_id: routineId,
+        activity_id: row.activity_id,
+        sort_order,
+        weight_kg: row.weight_kg,
+        weekdays_mask: row.weekdays_mask,
+      })),
+    });
   }
 }

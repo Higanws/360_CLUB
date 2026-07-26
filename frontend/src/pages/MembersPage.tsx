@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
+import { MmSearchField } from '../components/ui/MmSearchField';
 import { MmSelect } from '../components/ui/MmSelect';
 import { MemberAvatar } from '../components/mm/MemberAvatar';
 import { MmTableActions } from '../components/mm/MmTableActions';
 import { PageLoading } from '../components/mm/PageLoading';
 import { routes } from '../config/member-management';
 import { memberPortalRoutes } from '../config/member-portal';
+import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import { useGestionAuth } from '../hooks/useGestionAuth';
 import { api } from '../lib/api';
 import { apiErrorStatus } from '../lib/is-api-error';
@@ -51,11 +53,18 @@ export function MembersPage() {
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
+  const [filterQuery, setFilterQuery] = useState('');
+  const debouncedQuery = useDebouncedValue(filterQuery, 300);
 
   const { data, isLoading, isError, error: queryError } = useMembersList(
     page,
     pageSize,
+    debouncedQuery,
   );
+
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedQuery]);
 
   useEffect(() => {
     if (isError && apiErrorStatus(queryError) === 403) {
@@ -118,6 +127,17 @@ export function MembersPage() {
           </Link>
         </div>
       ) : null}
+
+      <div className="pay-toolbar">
+        <MmSearchField
+          grow
+          label="Buscar"
+          value={filterQuery}
+          onChange={(e) => setFilterQuery(e.target.value)}
+          placeholder="Nombre, ID socio, DNI o usuario…"
+          autoComplete="off"
+        />
+      </div>
 
       {showPager ? (
         <div className="members-toolbar members-pagination-toolbar">

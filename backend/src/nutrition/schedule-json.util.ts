@@ -1,5 +1,3 @@
-import type { ValueTransformer } from 'typeorm';
-
 export type NutritionIngredientLine = {
   name: string;
   quantity: string;
@@ -111,12 +109,3 @@ export function stringifyMealsScheduleJson(
   if (slots == null || !Array.isArray(slots) || slots.length === 0) return null;
   return JSON.stringify(dedupeNutritionSlots(slots));
 }
-
-export const mealsScheduleLongtextTransformer: ValueTransformer = {
-  to: (v: NutritionScheduleSlot[] | null | undefined) =>
-    stringifyMealsScheduleJson(v),
-  from: (v: unknown) => {
-    const slots = parseMealsScheduleJson(v);
-    return slots.length ? slots : null;
-  },
-};
