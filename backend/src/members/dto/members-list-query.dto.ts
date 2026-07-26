@@ -1,5 +1,12 @@
 import { Type } from 'class-transformer';
-import { IsInt, IsOptional, Max, Min } from 'class-validator';
+import {
+  IsInt,
+  IsOptional,
+  IsString,
+  Max,
+  MaxLength,
+  Min,
+} from 'class-validator';
 
 /** Query `GET /api/members` — listado paginado de socios (rol member). */
 export class MembersListQueryDto {
@@ -15,4 +22,9 @@ export class MembersListQueryDto {
   @Min(1)
   @Max(500)
   pageSize?: number = 25;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  q?: string;
 }

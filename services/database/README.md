@@ -1,9 +1,3 @@
-# MariaDB (Docker)
+# Capa de base de datos
 
-Ver **[../../docs/docker.md](../../docs/docker.md#servicesdatabase--mariadb-11-recomendado)**.
-
-```powershell
-docker compose up -d
-```
-
-Luego `cd ../../backend && npm run db:seed`.
+Ver **[`DOCUMENTACION.md`](../../DOCUMENTACION.md)** — secciones Arquitectura, BD/backups y Docker.

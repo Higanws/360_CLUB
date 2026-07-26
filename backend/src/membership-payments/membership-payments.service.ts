@@ -4,12 +4,8 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { GeneralSetting } from '../entities/general-setting.entity';
-import { GymMember } from '../entities/gym-member.entity';
-import { MembershipPayment } from '../entities/membership-payment.entity';
-import { Membership } from '../entities/membership.entity';
+import { Prisma } from '@prisma/client';
+import { PrismaService } from '../database/prisma.service';
 import { normalizeClubRole } from '../shared/domain/club/club-roles';
 import {
   buildPageMeta,
@@ -40,24 +36,30 @@ function padIsoDate(d: Date): string {
   return `${y}-${m}-${day}`;
 }
 
+type ExpiringRawRow = {
+  mp_id: number | bigint;
+  member_id: number | bigint | null;
+  membership_id: number | bigint | null;
+  membership_amount: number | string | null;
+  paid_amount: number | string | null;
+  start_date: Date | string | null;
+  end_date: Date | string | null;
+  payment_status: string | null;
+  membership_status: string | null;
+  first_name: string | null;
+  last_name: string | null;
+  membership_label: string | null;
+};
+
 @Injectable()
 export class MembershipPaymentsService {
   constructor(
-    @InjectRepository(MembershipPayment)
-    private readonly payments: Repository<MembershipPayment>,
-    @InjectRepository(GymMember)
-    private readonly members: Repository<GymMember>,
-    @InjectRepository(Membership)
-    private readonly plans: Repository<Membership>,
-    @InjectRepository(GeneralSetting)
-    private readonly settings: Repository<GeneralSetting>,
+    private readonly prisma: PrismaService,
     private readonly dashboardCache: DashboardCacheService,
   ) {}
 
-  private async settingsRow(): Promise<GeneralSetting | null> {
-    return (
-      (await this.settings.find({ take: 1, order: { id: 'ASC' } }))[0] ?? null
-    );
+  private async settingsRow() {
+    return this.prisma.generalSetting.findFirst({ orderBy: { id: 'asc' } });
   }
 
   /** Lista membresías (filas membership_payment) con fin de vigencia en el mes calendario actual. */
@@ -88,44 +90,48 @@ export class MembershipPaymentsService {
     const ownOnly =
       r === 'staff_member' && settingRow?.staff_can_view_own_member === 1;
 
-    const qb = this.payments
-      .createQueryBuilder('mp')
-      .leftJoin(GymMember, 'gm', 'gm.id = mp.member_id')
-      .leftJoin(Membership, 'plan', 'plan.id = mp.membership_id')
-      .where('mp.end_date IS NOT NULL')
-      .andWhere('mp.end_date >= :monthStart', { monthStart })
-      .andWhere('mp.end_date <= :monthEnd', { monthEnd });
-
+    const conditions = [
+      Prisma.sql`mp.end_date IS NOT NULL`,
+      Prisma.sql`mp.end_date >= ${monthStart}`,
+      Prisma.sql`mp.end_date <= ${monthEnd}`,
+    ];
     if (ownOnly) {
-      qb.andWhere('gm.assign_staff_mem = :uid', { uid: actor.userId });
+      conditions.push(Prisma.sql`gm.assign_staff_mem = ${actor.userId}`);
     }
+    const whereSql = Prisma.join(conditions, ' AND ');
 
     const ps = Math.min(100, Math.max(1, pageSize));
     const pg = Math.max(1, page);
 
-    const countQb = qb.clone();
-    const total = await countQb.getCount();
+    const countRows = await this.prisma.$queryRaw<Array<{ cnt: bigint | number }>>`
+      SELECT COUNT(*) AS cnt
+      FROM membership_payment mp
+      LEFT JOIN gym_member gm ON gm.id = mp.member_id
+      LEFT JOIN membership plan ON plan.id = mp.membership_id
+      WHERE ${whereSql}
+    `;
+    const total = Number(countRows[0]?.cnt ?? 0);
 
-    const raw = await qb
-      .select([
-        'mp.mp_id AS mp_id',
-        'mp.member_id AS member_id',
-        'mp.membership_id AS membership_id',
-        'mp.membership_amount AS membership_amount',
-        'mp.paid_amount AS paid_amount',
-        'mp.start_date AS start_date',
-        'mp.end_date AS end_date',
-        'mp.payment_status AS payment_status',
-        'mp.membership_status AS membership_status',
-        'gm.first_name AS first_name',
-        'gm.last_name AS last_name',
-        'plan.membership_label AS membership_label',
-      ])
-      .orderBy('mp.end_date', 'ASC')
-      .addOrderBy('mp.mp_id', 'ASC')
-      .offset(paginationSkip(pg, ps))
-      .limit(ps)
-      .getRawMany();
+    const raw = await this.prisma.$queryRaw<ExpiringRawRow[]>`
+      SELECT mp.mp_id AS mp_id,
+        mp.member_id AS member_id,
+        mp.membership_id AS membership_id,
+        mp.membership_amount AS membership_amount,
+        mp.paid_amount AS paid_amount,
+        mp.start_date AS start_date,
+        mp.end_date AS end_date,
+        mp.payment_status AS payment_status,
+        mp.membership_status AS membership_status,
+        gm.first_name AS first_name,
+        gm.last_name AS last_name,
+        plan.membership_label AS membership_label
+      FROM membership_payment mp
+      LEFT JOIN gym_member gm ON gm.id = mp.member_id
+      LEFT JOIN membership plan ON plan.id = mp.membership_id
+      WHERE ${whereSql}
+      ORDER BY mp.end_date ASC, mp.mp_id ASC
+      LIMIT ${ps} OFFSET ${paginationSkip(pg, ps)}
+    `;
 
     const rows: ExpiringPaymentRow[] = raw.map((row) => {
       const total = Number(row.membership_amount ?? 0);
@@ -177,8 +183,8 @@ export class MembershipPaymentsService {
       );
     }
 
-    const plans = await this.plans.find({
-      order: { membership_label: 'ASC' },
+    const plans = await this.prisma.membership.findMany({
+      orderBy: { membership_label: 'asc' },
     });
 
     const qTrim = q?.trim() ?? '';
@@ -198,25 +204,20 @@ export class MembershipPaymentsService {
       r === 'staff_member' && settingRow?.staff_can_view_own_member === 1;
 
     const take = Math.min(50, Math.max(1, limit));
-    const like = `%${qTrim.replace(/[%_\\]/g, '\\$&')}%`;
 
-    const mq = this.members
-      .createQueryBuilder('m')
-      .select(['m.id', 'm.first_name', 'm.last_name'])
-      .where('LOWER(TRIM(m.role_name)) = :mr', { mr: 'member' })
-      .andWhere(
-        `(LOWER(CONCAT(COALESCE(m.first_name,''), ' ', COALESCE(m.last_name,''))) LIKE LOWER(:like)
-          OR CAST(m.id AS CHAR) LIKE :like)`,
-        { like },
-      )
-      .orderBy('m.first_name', 'ASC')
-      .take(take);
-
-    if (ownOnly) {
-      mq.andWhere('m.assign_staff_mem = :uid', { uid: actor.userId });
-    }
-
-    const memRows = await mq.getMany();
+    const memRows = await this.prisma.gymMember.findMany({
+      where: {
+        role_name: 'member',
+        OR: [
+          { first_name: { contains: qTrim } },
+          { last_name: { contains: qTrim } },
+        ],
+        ...(ownOnly ? { assign_staff_mem: actor.userId } : {}),
+      },
+      select: { id: true, first_name: true, last_name: true },
+      orderBy: { first_name: 'asc' },
+      take,
+    });
 
     return {
       members: memRows.map((m) => ({
@@ -242,7 +243,7 @@ export class MembershipPaymentsService {
       );
     }
 
-    const member = await this.members.findOne({
+    const member = await this.prisma.gymMember.findUnique({
       where: { id: dto.member_id },
     });
     if (!member || normalizeClubRole(member.role_name) !== 'member') {
@@ -262,15 +263,14 @@ export class MembershipPaymentsService {
       );
     }
 
-    const plan = await this.plans.findOne({
+    const plan = await this.prisma.membership.findUnique({
       where: { id: dto.membership_id },
     });
     if (!plan) {
       throw new NotFoundException('Plan de membresía no encontrado.');
     }
 
-    const total =
-      dto.membership_amount ?? plan.membership_amount ?? 0;
+    const total = dto.membership_amount ?? plan.membership_amount ?? 0;
     if (total < 0 || dto.paid_amount < 0) {
       throw new BadRequestException('Importes no válidos.');
     }
@@ -284,20 +284,20 @@ export class MembershipPaymentsService {
     const membership_status =
       dto.paid_amount >= total ? 'Continue' : 'Not Available';
 
-    const row = this.payments.create({
-      member_id: dto.member_id,
-      membership_id: dto.membership_id,
-      membership_amount: total,
-      paid_amount: dto.paid_amount,
-      start_date: dto.start_date.slice(0, 10),
-      end_date: dto.end_date.slice(0, 10),
-      membership_status,
-      payment_status: dto.paid_amount >= total ? '1' : '0',
-      created_date: new Date(),
-      created_by: actor.userId,
+    const saved = await this.prisma.membershipPayment.create({
+      data: {
+        member_id: dto.member_id,
+        membership_id: dto.membership_id,
+        membership_amount: total,
+        paid_amount: dto.paid_amount,
+        start_date: new Date(dto.start_date.slice(0, 10)),
+        end_date: new Date(dto.end_date.slice(0, 10)),
+        membership_status,
+        payment_status: dto.paid_amount >= total ? '1' : '0',
+        created_date: new Date(),
+        created_by: actor.userId,
+      },
     });
-
-    const saved = await this.payments.save(row);
     await this.dashboardCache.invalidateBusinessMetrics();
     return { ok: true, mp_id: saved.mp_id };
   }
@@ -314,11 +314,13 @@ export class MembershipPaymentsService {
       );
     }
 
-    const mp = await this.payments.findOne({ where: { mp_id: mpId } });
+    const mp = await this.prisma.membershipPayment.findUnique({
+      where: { mp_id: mpId },
+    });
     if (!mp) throw new NotFoundException('Registro de cobro no encontrado.');
 
     if (mp.member_id != null) {
-      const member = await this.members.findOne({
+      const member = await this.prisma.gymMember.findUnique({
         where: { id: mp.member_id },
       });
       if (member && normalizeClubRole(member.role_name) === 'member') {
@@ -338,10 +340,14 @@ export class MembershipPaymentsService {
     }
 
     const total = Number(mp.membership_amount ?? 0);
-    mp.paid_amount = total;
-    mp.payment_status = '1';
-    mp.membership_status = 'Continue';
-    await this.payments.save(mp);
+    await this.prisma.membershipPayment.update({
+      where: { mp_id: mpId },
+      data: {
+        paid_amount: total,
+        payment_status: '1',
+        membership_status: 'Continue',
+      },
+    });
     await this.dashboardCache.invalidateBusinessMetrics();
     return { ok: true };
   }

@@ -25,3 +25,7 @@ Thumbs.db
 
 # Prisma generado (se regenera con prisma generate)
 backend/node_modules/.prisma/
+
+# Dumps de BD (bind mount fuera de Docker; conservar carpeta)
+Backups/*
+!Backups/.gitkeep

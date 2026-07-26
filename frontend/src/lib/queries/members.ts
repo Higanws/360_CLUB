@@ -6,10 +6,10 @@ import {
   type MemberLiteRow,
 } from '../members-api';
 
-export function useMembersList(page: number, pageSize: number) {
+export function useMembersList(page: number, pageSize: number, q = '') {
   return useQuery({
-    queryKey: ['members', 'list', page, pageSize],
-    queryFn: () => fetchMembersListPage(page, pageSize),
+    queryKey: ['members', 'list', page, pageSize, q],
+    queryFn: () => fetchMembersListPage(page, pageSize, q),
     placeholderData: keepPreviousData,
   });
 }

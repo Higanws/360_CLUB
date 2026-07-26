@@ -4,11 +4,9 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { GeneralSetting } from '../entities/general-setting.entity';
-import { GymMember } from '../entities/gym-member.entity';
-import { NutritionPlan } from '../entities/nutrition-plan.entity';
+import { Prisma } from '@prisma/client';
+import type { GymMember } from '@prisma/client';
+import { PrismaService } from '../database/prisma.service';
 import { UpsertNutritionPlanDto } from './dto/upsert-nutrition-plan.dto';
 import {
   buildPageMeta,
@@ -21,6 +19,7 @@ import { toIsoDateOnly } from '../shared/domain/shared/iso-date';
 import {
   dedupeNutritionSlots,
   parseMealsScheduleJson,
+  stringifyMealsScheduleJson,
   type NutritionIngredientLine,
   type NutritionScheduleSlot,
 } from './schedule-json.util';
@@ -91,14 +90,7 @@ function normalizeSlotsFromDto(dto: UpsertNutritionPlanDto): NutritionScheduleSl
 
 @Injectable()
 export class NutritionService {
-  constructor(
-    @InjectRepository(GymMember)
-    private readonly members: Repository<GymMember>,
-    @InjectRepository(NutritionPlan)
-    private readonly plans: Repository<NutritionPlan>,
-    @InjectRepository(GeneralSetting)
-    private readonly settings: Repository<GeneralSetting>,
-  ) {}
+  constructor(private readonly prisma: PrismaService) {}
 
   private assertBusinessRole(role_name: string): void {
     const r = normalizeClubRole(role_name);
@@ -107,12 +99,6 @@ export class NutritionService {
         'Nutrición solo para administración o staff del club.',
       );
     }
-  }
-
-  private async settingsRow(): Promise<GeneralSetting | null> {
-    return (
-      (await this.settings.find({ take: 1, order: { id: 'ASC' } }))[0] ?? null
-    );
   }
 
   private async assertCanManageMember(
@@ -135,60 +121,60 @@ export class NutritionService {
     const ps = Math.min(100, Math.max(1, pageSize));
     const pg = Math.max(1, page);
 
-    const params: unknown[] = ['member'];
-    let whereExtra = '';
+    const conditions: Prisma.Sql[] = [
+      Prisma.sql`LOWER(TRIM(m.role_name)) = 'member'`,
+    ];
     if (role === 'staff_member') {
-      whereExtra += ' AND m.assign_staff_mem = ?';
-      params.push(uid);
+      conditions.push(Prisma.sql`m.assign_staff_mem = ${uid}`);
     }
     const qTrim = q?.trim();
     if (qTrim) {
-      whereExtra +=
-        " AND (LOWER(CONCAT(COALESCE(m.first_name,''), ' ', COALESCE(m.last_name,''))) LIKE LOWER(?) OR CAST(m.id AS CHAR) LIKE ?)";
       const like = `%${qTrim.replace(/[%_\\]/g, '\\$&')}%`;
-      params.push(like, like);
+      conditions.push(
+        Prisma.sql`(LOWER(CONCAT(COALESCE(m.first_name,''), ' ', COALESCE(m.last_name,''))) LIKE LOWER(${like}) OR CAST(m.id AS CHAR) LIKE ${like})`,
+      );
     }
+    const whereSql = Prisma.join(conditions, ' AND ');
 
-    const countSql = `
-SELECT COUNT(*) AS cnt
-FROM gym_member m
-WHERE LOWER(TRIM(m.role_name)) = ?${whereExtra}`;
-    const countRow = (await this.members.manager.query(countSql, params)) as Array<{
-      cnt: number | string;
-    }>;
+    const countRow = await this.prisma.$queryRaw<Array<{ cnt: bigint | number }>>`
+      SELECT COUNT(*) AS cnt
+      FROM gym_member m
+      WHERE ${whereSql}
+    `;
     const total = Number(countRow[0]?.cnt ?? 0);
 
-    const listSql = `
-SELECT m.id AS member_id,
-  m.first_name AS first_name,
-  m.last_name AS last_name,
-  np.id AS plan_id,
-  np.valid_from AS valid_from,
-  np.valid_to AS valid_to,
-  COALESCE(JSON_LENGTH(np.meals_schedule_json), 0) AS meal_count
-FROM gym_member m
-LEFT JOIN nutrition_plan np ON np.member_id = m.id
-WHERE LOWER(TRIM(m.role_name)) = ?${whereExtra}
-ORDER BY m.first_name ASC, m.last_name ASC
-LIMIT ? OFFSET ?`;
-    const listParams = [...params, ps, paginationSkip(pg, ps)];
-    const raw = (await this.members.manager.query(listSql, listParams)) as Array<{
-      member_id: number;
-      first_name: string | null;
-      last_name: string | null;
-      plan_id: number | null;
-      valid_from: Date | string | null;
-      valid_to: Date | string | null;
-      meal_count: number | string;
-    }>;
+    const raw = await this.prisma.$queryRaw<
+      Array<{
+        member_id: number;
+        first_name: string | null;
+        last_name: string | null;
+        plan_id: number | null;
+        valid_from: Date | string | null;
+        valid_to: Date | string | null;
+        meal_count: number | string | null;
+      }>
+    >`
+      SELECT m.id AS member_id,
+        m.first_name AS first_name,
+        m.last_name AS last_name,
+        np.id AS plan_id,
+        np.valid_from AS valid_from,
+        np.valid_to AS valid_to,
+        COALESCE(JSON_LENGTH(np.meals_schedule_json), 0) AS meal_count
+      FROM gym_member m
+      LEFT JOIN nutrition_plan np ON np.member_id = m.id
+      WHERE ${whereSql}
+      ORDER BY m.first_name ASC, m.last_name ASC
+      LIMIT ${ps} OFFSET ${paginationSkip(pg, ps)}
+    `;
 
     const rows: NutritionOverviewRow[] = raw.map((row) => ({
       member_id: row.member_id,
       first_name: row.first_name,
       last_name: row.last_name,
       plan_id: row.plan_id,
-      valid_from: toIsoDateOnly(row.valid_from as Date),
-      valid_to: toIsoDateOnly(row.valid_to as Date),
+      valid_from: toIsoDateOnly(row.valid_from),
+      valid_to: toIsoDateOnly(row.valid_to),
       meal_count: Number(row.meal_count ?? 0),
     }));
 
@@ -200,13 +186,15 @@ LIMIT ? OFFSET ?`;
     actor: { userId: number; role_name: string },
   ): Promise<{ plan: NutritionPlanPayload | null }> {
     this.assertBusinessRole(actor.role_name);
-    const m = await this.members.findOne({ where: { id: memberId } });
+    const m = await this.prisma.gymMember.findUnique({
+      where: { id: memberId },
+    });
     if (!m || normalizeClubRole(m.role_name) !== 'member') {
       throw new NotFoundException('Socio no encontrado.');
     }
     await this.assertCanManageMember(actor, m);
 
-    const plan = await this.plans.findOne({
+    const plan = await this.prisma.nutritionPlan.findUnique({
       where: { member_id: memberId },
     });
 
@@ -223,17 +211,15 @@ LIMIT ? OFFSET ?`;
       };
     }
 
-    const schedule_slots = parseMealsScheduleJson(
-      plan.meals_schedule_json as unknown,
-    );
+    const schedule_slots = parseMealsScheduleJson(plan.meals_schedule_json);
 
     return {
       plan: {
         member_id: memberId,
         first_name: m.first_name,
         last_name: m.last_name,
-        valid_from: toIsoDateOnly(plan.valid_from as Date),
-        valid_to: toIsoDateOnly(plan.valid_to as Date),
+        valid_from: toIsoDateOnly(plan.valid_from),
+        valid_to: toIsoDateOnly(plan.valid_to),
         schedule_slots,
       },
     };
@@ -245,7 +231,9 @@ LIMIT ? OFFSET ?`;
     actor: { userId: number; role_name: string },
   ): Promise<{ plan: NutritionPlanPayload }> {
     this.assertBusinessRole(actor.role_name);
-    const m = await this.members.findOne({ where: { id: memberId } });
+    const m = await this.prisma.gymMember.findUnique({
+      where: { id: memberId },
+    });
     if (!m || normalizeClubRole(m.role_name) !== 'member') {
       throw new NotFoundException('Socio no encontrado.');
     }
@@ -259,23 +247,23 @@ LIMIT ? OFFSET ?`;
       dto.valid_to && dto.valid_to !== '' ? new Date(dto.valid_to) : null;
 
     const slots = normalizeSlotsFromDto(dto);
+    const meals_schedule_json = stringifyMealsScheduleJson(slots);
 
-    let plan = await this.plans.findOne({ where: { member_id: memberId } });
-    if (!plan) {
-      plan = this.plans.create({
+    await this.prisma.nutritionPlan.upsert({
+      where: { member_id: memberId },
+      create: {
         member_id: memberId,
         valid_from: validFrom,
         valid_to: validTo,
-        meals_schedule_json: slots.length ? slots : null,
+        meals_schedule_json,
         created_at: new Date(),
-      });
-      plan = await this.plans.save(plan);
-    } else {
-      plan.valid_from = validFrom;
-      plan.valid_to = validTo;
-      plan.meals_schedule_json = slots.length ? slots : null;
-      await this.plans.save(plan);
-    }
+      },
+      update: {
+        valid_from: validFrom,
+        valid_to: validTo,
+        meals_schedule_json,
+      },
+    });
 
     const res = await this.getPlanForMember(memberId, actor);
     if (!res.plan) throw new NotFoundException();
@@ -287,13 +275,17 @@ LIMIT ? OFFSET ?`;
     actor: { userId: number; role_name: string },
   ): Promise<{ ok: true }> {
     this.assertBusinessRole(actor.role_name);
-    const m = await this.members.findOne({ where: { id: memberId } });
+    const m = await this.prisma.gymMember.findUnique({
+      where: { id: memberId },
+    });
     if (!m || normalizeClubRole(m.role_name) !== 'member') {
       throw new NotFoundException('Socio no encontrado.');
     }
     await this.assertCanManageMember(actor, m);
 
-    await this.plans.delete({ member_id: memberId });
+    await this.prisma.nutritionPlan.deleteMany({
+      where: { member_id: memberId },
+    });
     return { ok: true };
   }
 }

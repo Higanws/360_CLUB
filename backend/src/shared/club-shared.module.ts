@@ -1,31 +1,27 @@
 import { Global, Module } from '@nestjs/common';
-import { TypeOrmModule } from '@nestjs/typeorm';
-import { GeneralSetting } from '../entities/general-setting.entity';
-import { GymMember } from '../entities/gym-member.entity';
 import { GetClubBrandingUseCase } from './application/club/get-club-branding.use-case';
 import { DashboardCacheService } from './cache/dashboard-cache.service';
 import { GYM_MEMBER_READ } from './application/ports/gym-member-read.port';
 import { GENERAL_SETTINGS } from './application/ports/general-settings.port';
 import { PASSWORD_HASHER } from './application/ports/password-hasher.port';
 import { BcryptPasswordHasher } from './infrastructure/security/bcrypt-password-hasher';
-import { TypeOrmGymMemberReadRepository } from './infrastructure/persistence/typeorm/typeorm-gym-member-read.repository';
-import { TypeOrmGeneralSettingsRepository } from './infrastructure/persistence/typeorm/typeorm-general-settings.repository';
+import { PrismaGymMemberReadRepository } from './infrastructure/persistence/prisma/prisma-gym-member-read.repository';
+import { PrismaGeneralSettingsRepository } from './infrastructure/persistence/prisma/prisma-general-settings.repository';
 
 /**
- * Módulo transversal (hexagonal): puertos + adaptadores TypeORM reutilizables.
- * @Global() para inyectar casos de uso en feature modules sin reimportar entidades.
+ * Módulo transversal (hexagonal): puertos + adaptadores Prisma reutilizables.
+ * @Global() para inyectar casos de uso en feature modules sin reimportar Prisma.
  */
 @Global()
 @Module({
-  imports: [TypeOrmModule.forFeature([GymMember, GeneralSetting])],
   providers: [
-    TypeOrmGymMemberReadRepository,
-    TypeOrmGeneralSettingsRepository,
+    PrismaGymMemberReadRepository,
+    PrismaGeneralSettingsRepository,
     BcryptPasswordHasher,
-    { provide: GYM_MEMBER_READ, useExisting: TypeOrmGymMemberReadRepository },
+    { provide: GYM_MEMBER_READ, useExisting: PrismaGymMemberReadRepository },
     {
       provide: GENERAL_SETTINGS,
-      useExisting: TypeOrmGeneralSettingsRepository,
+      useExisting: PrismaGeneralSettingsRepository,
     },
     { provide: PASSWORD_HASHER, useExisting: BcryptPasswordHasher },
     GetClubBrandingUseCase,
@@ -37,7 +33,7 @@ import { TypeOrmGeneralSettingsRepository } from './infrastructure/persistence/t
     PASSWORD_HASHER,
     GetClubBrandingUseCase,
     DashboardCacheService,
-    TypeOrmGymMemberReadRepository,
+    PrismaGymMemberReadRepository,
   ],
 })
 export class ClubSharedModule {}

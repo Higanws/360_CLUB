@@ -41,6 +41,7 @@ export class StaffController {
       { userId: req.user.userId, role_name: req.user.role_name },
       q.page ?? 1,
       q.pageSize ?? 25,
+      q.q,
     );
   }
 

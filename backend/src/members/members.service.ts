@@ -1,5 +1,5 @@
 /**
- * Caso de uso de socios: solo DML vía TypeORM. Las tablas siguen el modelo MySQL real;
+ * Caso de uso de socios: solo DML vía Prisma. Las tablas siguen el modelo MySQL real;
  * Esquema MVP: `backend/database/schema/schema_mysql.sql`; seed demo en `database/seed/seed_mvp.sql`.
  */
 import {
@@ -9,8 +9,9 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Prisma } from '@prisma/client';
+import type { GymMember } from '@prisma/client';
+import { PrismaService } from '../database/prisma.service';
 import { normalizeClubRole } from '../shared/domain/club/club-roles';
 import {
   assertStaffOwnsMember,
@@ -21,12 +22,6 @@ import {
   PASSWORD_HASHER,
   type PasswordHasher,
 } from '../shared/application/ports/password-hasher.port';
-import { ClassSchedule } from '../entities/class-schedule.entity';
-import { GeneralSetting } from '../entities/general-setting.entity';
-import { GymMemberClass } from '../entities/gym-member-class.entity';
-import { GymMember } from '../entities/gym-member.entity';
-import { MembershipPayment } from '../entities/membership-payment.entity';
-import { Membership } from '../entities/membership.entity';
 import { CreateMemberDto } from './dto/create-member.dto';
 import { UpdateMemberDto } from './dto/update-member.dto';
 
@@ -96,9 +91,11 @@ export type SafeMemberDetail = {
   physical_fat_percent: number | null;
 };
 
-function numFromDecColumn(s: string | null | undefined): number | null {
+function numFromDecColumn(
+  s: Prisma.Decimal | string | number | null | undefined,
+): number | null {
   if (s == null || s === '') return null;
-  const n = parseFloat(s);
+  const n = typeof s === 'number' ? s : parseFloat(s.toString());
   return Number.isFinite(n) ? Math.round(n * 100) / 100 : null;
 }
 
@@ -112,25 +109,12 @@ function parseDecimalDto(v: unknown): string | null {
 @Injectable()
 export class MembersService {
   constructor(
-    @InjectRepository(GymMember)
-    private readonly members: Repository<GymMember>,
-    @InjectRepository(GeneralSetting)
-    private readonly settings: Repository<GeneralSetting>,
-    @InjectRepository(GymMemberClass)
-    private readonly memberClass: Repository<GymMemberClass>,
-    @InjectRepository(Membership)
-    private readonly membership: Repository<Membership>,
-    @InjectRepository(MembershipPayment)
-    private readonly membershipPayment: Repository<MembershipPayment>,
-    @InjectRepository(ClassSchedule)
-    private readonly classSchedule: Repository<ClassSchedule>,
+    private readonly prisma: PrismaService,
     @Inject(PASSWORD_HASHER) private readonly passwordHasher: PasswordHasher,
   ) {}
 
-  private async settingsRow(): Promise<GeneralSetting | null> {
-    return (
-      (await this.settings.find({ take: 1, order: { id: 'ASC' } }))[0] ?? null
-    );
+  private async settingsRow() {
+    return this.prisma.generalSetting.findFirst({ orderBy: { id: 'asc' } });
   }
 
   private assertBusinessRole(role_name: string): void {
@@ -182,15 +166,13 @@ export class MembersService {
     username: string,
     excludeId?: number,
   ): Promise<void> {
-    const q = this.members
-      .createQueryBuilder('m')
-      .where('LOWER(TRIM(m.username)) = LOWER(TRIM(:u))', {
-        u: username.trim(),
-      });
-    if (excludeId != null) {
-      q.andWhere('m.id != :id', { id: excludeId });
-    }
-    const n = await q.getCount();
+    const u = username.trim();
+    const rows = await this.prisma.$queryRaw<Array<{ n: bigint | number }>>`
+      SELECT COUNT(*) AS n FROM gym_member
+      WHERE LOWER(TRIM(username)) = LOWER(TRIM(${u}))
+        ${excludeId != null ? Prisma.sql`AND id != ${excludeId}` : Prisma.empty}
+    `;
+    const n = Number(rows[0]?.n ?? 0);
     if (n > 0) {
       throw new ConflictException('Ya existe un usuario con ese nombre de acceso.');
     }
@@ -203,15 +185,14 @@ export class MembersService {
   ): Promise<void> {
     const t = type.trim().toUpperCase();
     const n = number.trim().toUpperCase().replace(/\s+/g, '');
-    const q = this.members
-      .createQueryBuilder('m')
-      .where('LOWER(TRIM(m.role_name)) = :mr', { mr: 'member' })
-      .andWhere('UPPER(TRIM(m.di_dni_type)) = :dt', { dt: t })
-      .andWhere('UPPER(TRIM(m.di_dni_number)) = :dn', { dn: n });
-    if (excludeId != null) {
-      q.andWhere('m.id != :id', { id: excludeId });
-    }
-    const c = await q.getCount();
+    const rows = await this.prisma.$queryRaw<Array<{ c: bigint | number }>>`
+      SELECT COUNT(*) AS c FROM gym_member
+      WHERE LOWER(TRIM(role_name)) = 'member'
+        AND UPPER(TRIM(di_dni_type)) = ${t}
+        AND UPPER(TRIM(di_dni_number)) = ${n}
+        ${excludeId != null ? Prisma.sql`AND id != ${excludeId}` : Prisma.empty}
+    `;
+    const c = Number(rows[0]?.c ?? 0);
     if (c > 0) {
       throw new ConflictException('Ya existe un socio con ese documento.');
     }
@@ -230,7 +211,7 @@ export class MembersService {
       first_name: m.first_name,
       last_name: m.last_name,
       gender: m.gender,
-      birth_date: toIsoDateOnly(m.birth_date as Date),
+      birth_date: toIsoDateOnly(m.birth_date),
       email: m.email,
       username: m.username,
       mobile: m.mobile,
@@ -243,12 +224,12 @@ export class MembersService {
       assign_staff_mem: m.assign_staff_mem,
       selected_membership: m.selected_membership,
       membership_status: m.membership_status,
-      membership_valid_from: toIsoDateOnly(m.membership_valid_from as Date),
-      membership_valid_to: toIsoDateOnly(m.membership_valid_to as Date),
-      inquiry_date: toIsoDateOnly(m.inquiry_date as Date),
-      trial_end_date: toIsoDateOnly(m.trial_end_date as Date),
-      first_pay_date: toIsoDateOnly(m.first_pay_date as Date),
-      created_date: toIsoDateOnly(m.created_date as Date),
+      membership_valid_from: toIsoDateOnly(m.membership_valid_from),
+      membership_valid_to: toIsoDateOnly(m.membership_valid_to),
+      inquiry_date: toIsoDateOnly(m.inquiry_date),
+      trial_end_date: toIsoDateOnly(m.trial_end_date),
+      first_pay_date: toIsoDateOnly(m.first_pay_date),
+      created_date: toIsoDateOnly(m.created_date),
       assign_class_ids,
       physical_weight_kg: numFromDecColumn(m.physical_weight_kg),
       physical_height_cm: numFromDecColumn(m.physical_height_cm),
@@ -281,42 +262,40 @@ export class MembersService {
 
     const limit = Math.min(50, Math.max(1, Math.floor(payload.limit) || 20));
     const uid = payload.userId;
-    const like = `%${q.replace(/[%_\\]/g, '\\$&')}%`;
 
-    const qb = this.members
-      .createQueryBuilder('m')
-      .select([
-        'm.id',
-        'm.activated',
-        'm.member_id',
-        'm.first_name',
-        'm.last_name',
-        'm.image',
-        'm.username',
-        'm.di_dni_number',
-        'm.membership_status',
-        'm.membership_valid_from',
-        'm.membership_valid_to',
-      ])
-      .where('LOWER(TRIM(m.role_name)) = :memberRole', { memberRole: 'member' })
-      .andWhere(
-        `(LOWER(CONCAT(COALESCE(m.first_name,''), ' ', COALESCE(m.last_name,''))) LIKE LOWER(:like)
-          OR LOWER(COALESCE(m.username,'')) LIKE LOWER(:like)
-          OR LOWER(COALESCE(m.di_dni_number,'')) LIKE LOWER(:like)
-          OR LOWER(COALESCE(m.member_id,'')) LIKE LOWER(:like))`,
-        { like },
-      );
+    const where: Prisma.GymMemberWhereInput = {
+      role_name: 'member',
+      OR: [
+        { first_name: { contains: q } },
+        { last_name: { contains: q } },
+        { username: { contains: q } },
+        { di_dni_number: { contains: q } },
+        { member_id: { contains: q } },
+      ],
+      ...(role === 'staff_member' ? { assign_staff_mem: uid } : {}),
+    };
 
-    if (role === 'staff_member') {
-      qb.andWhere('m.assign_staff_mem = :uid', { uid });
-    }
-
-    const total = await qb.clone().getCount();
-    const rows = await qb
-      .orderBy('m.first_name', 'ASC')
-      .addOrderBy('m.last_name', 'ASC')
-      .take(limit)
-      .getMany();
+    const [total, rows] = await Promise.all([
+      this.prisma.gymMember.count({ where }),
+      this.prisma.gymMember.findMany({
+        where,
+        select: {
+          id: true,
+          activated: true,
+          member_id: true,
+          first_name: true,
+          last_name: true,
+          image: true,
+          username: true,
+          di_dni_number: true,
+          membership_status: true,
+          membership_valid_from: true,
+          membership_valid_to: true,
+        },
+        orderBy: [{ first_name: 'asc' }, { last_name: 'asc' }],
+        take: limit,
+      }),
+    ]);
 
     const members: MembersListRow[] = rows.map((r) => ({
       id: r.id,
@@ -338,6 +317,7 @@ export class MembersService {
     role_name: string;
     page: number;
     pageSize: number;
+    q?: string;
   }): Promise<MembersListResponse> {
     const role = normalizeClubRole(payload.role_name);
     if (role === 'member') {
@@ -355,36 +335,44 @@ export class MembersService {
       Math.max(1, Math.floor(payload.pageSize) || 25),
     );
 
-    const qb = this.members
-      .createQueryBuilder('m')
-      .select([
-        'm.id',
-        'm.activated',
-        'm.member_id',
-        'm.first_name',
-        'm.last_name',
-        'm.image',
-        'm.membership_status',
-        'm.membership_valid_from',
-        'm.membership_valid_to',
-        'm.assign_staff_mem',
-      ])
-      .where('LOWER(TRIM(m.role_name)) = :memberRole', { memberRole: 'member' });
+    const qTrim = payload.q?.trim();
+    const where: Prisma.GymMemberWhereInput = {
+      role_name: 'member',
+      ...(role === 'staff_member' ? { assign_staff_mem: uid } : {}),
+      ...(qTrim
+        ? {
+            OR: [
+              { first_name: { contains: qTrim } },
+              { last_name: { contains: qTrim } },
+              { username: { contains: qTrim } },
+              { di_dni_number: { contains: qTrim } },
+              { member_id: { contains: qTrim } },
+            ],
+          }
+        : {}),
+    };
 
-    if (role === 'administrator') {
-      /* todos */
-    } else if (role === 'staff_member') {
-      qb.andWhere('m.assign_staff_mem = :uid', { uid });
-    }
-
-    const total = await qb.clone().getCount();
-    const rows = await qb
-      .clone()
-      .orderBy('m.first_name', 'ASC')
-      .addOrderBy('m.last_name', 'ASC')
-      .skip((page - 1) * pageSize)
-      .take(pageSize)
-      .getMany();
+    const [total, rows] = await Promise.all([
+      this.prisma.gymMember.count({ where }),
+      this.prisma.gymMember.findMany({
+        where,
+        select: {
+          id: true,
+          activated: true,
+          member_id: true,
+          first_name: true,
+          last_name: true,
+          image: true,
+          membership_status: true,
+          membership_valid_from: true,
+          membership_valid_to: true,
+          assign_staff_mem: true,
+        },
+        orderBy: [{ first_name: 'asc' }, { last_name: 'asc' }],
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+    ]);
 
     const mapped: MembersListRow[] = rows.map((r) => ({
       id: r.id,
@@ -418,19 +406,18 @@ export class MembersService {
   }
 
   async formOptions() {
-    const staffRows = await this.members
-      .createQueryBuilder('m')
-      .select(['m.id', 'm.first_name', 'm.last_name'])
-      .where('LOWER(TRIM(m.role_name)) = :r', { r: 'staff_member' })
-      .orderBy('m.first_name', 'ASC')
-      .getMany();
-
-    const classes = await this.classSchedule.find({
-      order: { class_name: 'ASC' },
+    const staffRows = await this.prisma.gymMember.findMany({
+      where: { role_name: 'staff_member' },
+      select: { id: true, first_name: true, last_name: true },
+      orderBy: { first_name: 'asc' },
     });
 
-    const plans = await this.membership.find({
-      order: { membership_label: 'ASC' },
+    const classes = await this.prisma.classSchedule.findMany({
+      orderBy: { class_name: 'asc' },
+    });
+
+    const plans = await this.prisma.membership.findMany({
+      orderBy: { membership_label: 'asc' },
     });
 
     return {
@@ -455,14 +442,14 @@ export class MembersService {
     actor: { userId: number; role_name: string },
   ): Promise<{ member: SafeMemberDetail }> {
     this.assertBusinessRole(actor.role_name);
-    const m = await this.members.findOne({ where: { id } });
+    const m = await this.prisma.gymMember.findUnique({ where: { id } });
     if (!m || normalizeClubRole(m.role_name) !== 'member') {
       throw new NotFoundException('Socio no encontrado.');
     }
     await this.assertCanManageMember(actor, m);
-    const cls = await this.memberClass.find({
+    const cls = await this.prisma.gymMemberClass.findMany({
       where: { member_id: id },
-      order: { id: 'ASC' },
+      orderBy: { id: 'asc' },
     });
     const ids = cls
       .map((c) => c.assign_class)
@@ -487,45 +474,54 @@ export class MembersService {
     const membership_status = this.memberTypeToStatus('Member');
     const hash = await this.passwordHasher.hash(dto.password);
 
-    const row = this.members.create({
-      role_name: 'member',
-      first_name: dto.first_name.trim(),
-      last_name: dto.last_name.trim(),
-      username: dto.username.trim(),
-      password: hash,
-      email: dto.email?.trim() || null,
-      mobile: dto.mobile?.trim() || null,
-      phone: dto.phone?.trim() || null,
-      gender: dto.gender,
-      birth_date: this.parseOptionalDate(dto.birth_date),
-      address: dto.address?.trim() || null,
-      city: dto.city?.trim() || null,
-      state: dto.state?.trim() || null,
-      zipcode: dto.zipcode?.trim() || null,
-      di_dni_type: dto.di_dni_type.trim().toUpperCase(),
-      di_dni_number: dto.di_dni_number.trim().toUpperCase().replace(/\s+/g, ''),
-      member_type: 'Member',
-      membership_status,
-      membership_valid_from: this.parseOptionalDate(dto.membership_valid_from),
-      membership_valid_to: this.parseOptionalDate(dto.membership_valid_to),
-      selected_membership: dto.selected_membership?.trim() || null,
-      assign_staff_mem: dto.assign_staff_mem ?? null,
-      activated: dto.activated ?? 1,
-      image: 'Thumbnail-img.png',
-      created_date: new Date(),
-      created_by: actor.userId,
-      physical_weight_kg: parseDecimalDto(dto.physical_weight_kg),
-      physical_height_cm: parseDecimalDto(dto.physical_height_cm),
-      physical_chest_cm: parseDecimalDto(dto.physical_chest_cm),
-      physical_waist_cm: parseDecimalDto(dto.physical_waist_cm),
-      physical_thigh_cm: parseDecimalDto(dto.physical_thigh_cm),
-      physical_arms_cm: parseDecimalDto(dto.physical_arms_cm),
-      physical_fat_percent: parseDecimalDto(dto.physical_fat_percent),
+    const saved = await this.prisma.gymMember.create({
+      data: {
+        role_name: 'member',
+        first_name: dto.first_name.trim(),
+        last_name: dto.last_name.trim(),
+        username: dto.username.trim(),
+        password: hash,
+        email: dto.email?.trim() || null,
+        mobile: dto.mobile?.trim() || null,
+        phone: dto.phone?.trim() || null,
+        gender: dto.gender,
+        birth_date: this.parseOptionalDate(dto.birth_date),
+        address: dto.address?.trim() || null,
+        city: dto.city?.trim() || null,
+        state: dto.state?.trim() || null,
+        zipcode: dto.zipcode?.trim() || null,
+        di_dni_type: dto.di_dni_type.trim().toUpperCase(),
+        di_dni_number: dto.di_dni_number
+          .trim()
+          .toUpperCase()
+          .replace(/\s+/g, ''),
+        member_type: 'Member',
+        membership_status,
+        membership_valid_from: this.parseOptionalDate(
+          dto.membership_valid_from,
+        ),
+        membership_valid_to: this.parseOptionalDate(dto.membership_valid_to),
+        selected_membership: dto.selected_membership?.trim() || null,
+        assign_staff_mem: dto.assign_staff_mem ?? null,
+        activated: dto.activated ?? 1,
+        image: 'Thumbnail-img.png',
+        created_date: new Date(),
+        created_by: actor.userId,
+        physical_weight_kg: parseDecimalDto(dto.physical_weight_kg),
+        physical_height_cm: parseDecimalDto(dto.physical_height_cm),
+        physical_chest_cm: parseDecimalDto(dto.physical_chest_cm),
+        physical_waist_cm: parseDecimalDto(dto.physical_waist_cm),
+        physical_thigh_cm: parseDecimalDto(dto.physical_thigh_cm),
+        physical_arms_cm: parseDecimalDto(dto.physical_arms_cm),
+        physical_fat_percent: parseDecimalDto(dto.physical_fat_percent),
+      },
     });
 
-    const saved = await this.members.save(row);
     const member_id = this.formatMemberCode(saved.id);
-    await this.members.update({ id: saved.id }, { member_id });
+    await this.prisma.gymMember.update({
+      where: { id: saved.id },
+      data: { member_id },
+    });
 
     await this.replaceClassAssignments(saved.id, dto.assign_class_ids ?? []);
     await this.insertMembershipPaymentIfNeeded(
@@ -537,9 +533,13 @@ export class MembersService {
       actor.userId,
     );
 
-    const fresh = await this.members.findOne({ where: { id: saved.id } });
+    const fresh = await this.prisma.gymMember.findUnique({
+      where: { id: saved.id },
+    });
     if (!fresh) throw new NotFoundException();
-    const cls = await this.memberClass.find({ where: { member_id: saved.id } });
+    const cls = await this.prisma.gymMemberClass.findMany({
+      where: { member_id: saved.id },
+    });
     const ids = cls
       .map((c) => c.assign_class)
       .filter((x): x is number => x != null);
@@ -550,12 +550,14 @@ export class MembersService {
     memberId: number,
     classIds: number[],
   ): Promise<void> {
-    await this.memberClass.delete({ member_id: memberId });
+    await this.prisma.gymMemberClass.deleteMany({
+      where: { member_id: memberId },
+    });
     const uniq = [...new Set(classIds)].filter((id) => id > 0);
     for (const assign_class of uniq) {
-      await this.memberClass.save(
-        this.memberClass.create({ member_id: memberId, assign_class }),
-      );
+      await this.prisma.gymMemberClass.create({
+        data: { member_id: memberId, assign_class },
+      });
     }
   }
 
@@ -571,22 +573,25 @@ export class MembersService {
     const mid = parseInt(selectedMembership.trim(), 10);
     if (Number.isNaN(mid) || mid < 1) return;
 
-    const plan = await this.membership.findOne({ where: { id: mid } });
+    const plan = await this.prisma.membership.findUnique({
+      where: { id: mid },
+    });
     if (!plan) return;
 
-    const row = this.membershipPayment.create({
-      member_id: memberId,
-      membership_id: mid,
-      membership_amount: plan.membership_amount ?? 0,
-      paid_amount: 0,
-      start_date: this.parseOptionalDate(start) ?? new Date(),
-      end_date: this.parseOptionalDate(end),
-      membership_status,
-      payment_status: '0',
-      created_date: new Date(),
-      created_by: createdBy,
+    await this.prisma.membershipPayment.create({
+      data: {
+        member_id: memberId,
+        membership_id: mid,
+        membership_amount: plan.membership_amount ?? 0,
+        paid_amount: 0,
+        start_date: this.parseOptionalDate(start) ?? new Date(),
+        end_date: this.parseOptionalDate(end),
+        membership_status,
+        payment_status: '0',
+        created_date: new Date(),
+        created_by: createdBy,
+      },
     });
-    await this.membershipPayment.save(row);
   }
 
   async update(
@@ -595,7 +600,7 @@ export class MembersService {
     actor: { userId: number; role_name: string },
   ): Promise<{ member: SafeMemberDetail }> {
     this.assertBusinessRole(actor.role_name);
-    const m = await this.members.findOne({ where: { id } });
+    const m = await this.prisma.gymMember.findUnique({ where: { id } });
     if (!m || normalizeClubRole(m.role_name) !== 'member') {
       throw new NotFoundException('Socio no encontrado.');
     }
@@ -612,63 +617,71 @@ export class MembersService {
       }
     }
 
+    const data: Prisma.GymMemberUpdateInput = {};
+
     if (dto.password !== undefined && dto.password.length > 0) {
-      m.password = await this.passwordHasher.hash(dto.password);
+      data.password = await this.passwordHasher.hash(dto.password);
     }
 
-    if (dto.first_name !== undefined) m.first_name = dto.first_name.trim();
-    if (dto.last_name !== undefined) m.last_name = dto.last_name.trim();
-    if (dto.username !== undefined) m.username = dto.username.trim();
-    if (dto.email !== undefined) m.email = dto.email?.trim() || null;
-    if (dto.mobile !== undefined) m.mobile = dto.mobile?.trim() || null;
-    if (dto.phone !== undefined) m.phone = dto.phone?.trim() || null;
-    if (dto.gender !== undefined) m.gender = dto.gender;
+    if (dto.first_name !== undefined) data.first_name = dto.first_name.trim();
+    if (dto.last_name !== undefined) data.last_name = dto.last_name.trim();
+    if (dto.username !== undefined) data.username = dto.username.trim();
+    if (dto.email !== undefined) data.email = dto.email?.trim() || null;
+    if (dto.mobile !== undefined) data.mobile = dto.mobile?.trim() || null;
+    if (dto.phone !== undefined) data.phone = dto.phone?.trim() || null;
+    if (dto.gender !== undefined) data.gender = dto.gender;
     if (dto.birth_date !== undefined)
-      m.birth_date = this.parseOptionalDate(dto.birth_date);
-    if (dto.address !== undefined) m.address = dto.address?.trim() || null;
-    if (dto.city !== undefined) m.city = dto.city?.trim() || null;
-    if (dto.state !== undefined) m.state = dto.state?.trim() || null;
-    if (dto.zipcode !== undefined) m.zipcode = dto.zipcode?.trim() || null;
+      data.birth_date = this.parseOptionalDate(dto.birth_date);
+    if (dto.address !== undefined) data.address = dto.address?.trim() || null;
+    if (dto.city !== undefined) data.city = dto.city?.trim() || null;
+    if (dto.state !== undefined) data.state = dto.state?.trim() || null;
+    if (dto.zipcode !== undefined) data.zipcode = dto.zipcode?.trim() || null;
     if (dto.di_dni_type !== undefined)
-      m.di_dni_type = dto.di_dni_type.trim().toUpperCase();
+      data.di_dni_type = dto.di_dni_type.trim().toUpperCase();
     if (dto.di_dni_number !== undefined)
-      m.di_dni_number = dto.di_dni_number
+      data.di_dni_number = dto.di_dni_number
         .trim()
         .toUpperCase()
         .replace(/\s+/g, '');
     if (dto.membership_valid_from !== undefined)
-      m.membership_valid_from = this.parseOptionalDate(dto.membership_valid_from);
+      data.membership_valid_from = this.parseOptionalDate(
+        dto.membership_valid_from,
+      );
     if (dto.membership_valid_to !== undefined)
-      m.membership_valid_to = this.parseOptionalDate(dto.membership_valid_to);
+      data.membership_valid_to = this.parseOptionalDate(
+        dto.membership_valid_to,
+      );
     if (dto.selected_membership !== undefined)
-      m.selected_membership = dto.selected_membership?.trim() || null;
+      data.selected_membership = dto.selected_membership?.trim() || null;
     if (dto.assign_staff_mem !== undefined)
-      m.assign_staff_mem = dto.assign_staff_mem ?? null;
-    if (dto.activated !== undefined) m.activated = dto.activated;
+      data.assign_staff_mem = dto.assign_staff_mem ?? null;
+    if (dto.activated !== undefined) data.activated = dto.activated;
     if (dto.physical_weight_kg !== undefined)
-      m.physical_weight_kg = parseDecimalDto(dto.physical_weight_kg);
+      data.physical_weight_kg = parseDecimalDto(dto.physical_weight_kg);
     if (dto.physical_height_cm !== undefined)
-      m.physical_height_cm = parseDecimalDto(dto.physical_height_cm);
+      data.physical_height_cm = parseDecimalDto(dto.physical_height_cm);
     if (dto.physical_chest_cm !== undefined)
-      m.physical_chest_cm = parseDecimalDto(dto.physical_chest_cm);
+      data.physical_chest_cm = parseDecimalDto(dto.physical_chest_cm);
     if (dto.physical_waist_cm !== undefined)
-      m.physical_waist_cm = parseDecimalDto(dto.physical_waist_cm);
+      data.physical_waist_cm = parseDecimalDto(dto.physical_waist_cm);
     if (dto.physical_thigh_cm !== undefined)
-      m.physical_thigh_cm = parseDecimalDto(dto.physical_thigh_cm);
+      data.physical_thigh_cm = parseDecimalDto(dto.physical_thigh_cm);
     if (dto.physical_arms_cm !== undefined)
-      m.physical_arms_cm = parseDecimalDto(dto.physical_arms_cm);
+      data.physical_arms_cm = parseDecimalDto(dto.physical_arms_cm);
     if (dto.physical_fat_percent !== undefined)
-      m.physical_fat_percent = parseDecimalDto(dto.physical_fat_percent);
+      data.physical_fat_percent = parseDecimalDto(dto.physical_fat_percent);
 
-    await this.members.save(m);
+    await this.prisma.gymMember.update({ where: { id }, data });
 
     if (dto.assign_class_ids !== undefined) {
       await this.replaceClassAssignments(id, dto.assign_class_ids);
     }
 
-    const fresh = await this.members.findOne({ where: { id } });
+    const fresh = await this.prisma.gymMember.findUnique({ where: { id } });
     if (!fresh) throw new NotFoundException();
-    const cls = await this.memberClass.find({ where: { member_id: id } });
+    const cls = await this.prisma.gymMemberClass.findMany({
+      where: { member_id: id },
+    });
     const ids = cls
       .map((c) => c.assign_class)
       .filter((x): x is number => x != null);
@@ -680,15 +693,17 @@ export class MembersService {
     actor: { userId: number; role_name: string },
   ): Promise<{ ok: true }> {
     this.assertBusinessRole(actor.role_name);
-    const m = await this.members.findOne({ where: { id } });
+    const m = await this.prisma.gymMember.findUnique({ where: { id } });
     if (!m || normalizeClubRole(m.role_name) !== 'member') {
       throw new NotFoundException('Socio no encontrado.');
     }
     await this.assertCanManageMember(actor, m);
 
-    await this.memberClass.delete({ member_id: id });
-    await this.membershipPayment.delete({ member_id: id });
-    await this.members.delete({ id });
+    await this.prisma.gymMemberClass.deleteMany({ where: { member_id: id } });
+    await this.prisma.membershipPayment.deleteMany({
+      where: { member_id: id },
+    });
+    await this.prisma.gymMember.delete({ where: { id } });
     return { ok: true };
   }
 }

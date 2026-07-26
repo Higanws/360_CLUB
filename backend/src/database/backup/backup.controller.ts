@@ -1,98 +1,84 @@
-import { Controller, Get, Post, Logger } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  UploadedFile,
+  UseGuards,
+  UseInterceptors,
+  BadRequestException,
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { IsOptional, IsString } from 'class-validator';
+import { memoryStorage } from 'multer';
+import { AdministratorRoleGuard } from '../../staff/administrator-role.guard';
 import { BackupService } from './backup.service';
+import { DbMaintenanceService } from './db-maintenance.service';
+import { SkipDbMaintenance } from './skip-db-maintenance.decorator';
 
-/**
- * Endpoints para gestión manual de backups.
- * Requiere autenticación de admin (proteger con guards).
- */
-@Controller('api/admin/backups')
+class RestoreBodyDto {
+  @IsOptional()
+  @IsString()
+  filename?: string;
+}
+
+@Controller('admin/backups')
+@UseGuards(AdministratorRoleGuard)
+@SkipDbMaintenance()
 export class BackupController {
-  private readonly logger = new Logger(BackupController.name);
+  constructor(
+    private readonly backups: BackupService,
+    private readonly maintenance: DbMaintenanceService,
+  ) {}
 
-  constructor(private backup: BackupService) {}
+  /** Estado de mantenimiento / cola (no hay cola offline). */
+  @Get('status')
+  status() {
+    return {
+      ...this.maintenance.getStatus(),
+      backup_dir: this.backups.getBackupDir(),
+    };
+  }
 
-  /**
-   * GET /api/admin/backups/list
-   * Listar todos los backups disponibles.
-   */
-  @Get('list')
-  async listBackups() {
-    try {
-      const backups = await this.backup.listBackups();
-      const totalSize = await this.backup.getBackupsTotalSize();
+  @Get()
+  async list() {
+    return { items: await this.backups.listBackups() };
+  }
 
-      return {
-        success: true,
-        data: {
-          backups,
-          totalSize,
-          totalSizeFormatted: this.formatBytes(totalSize),
-          count: backups.length,
-        },
-      };
-    } catch (error) {
-      this.logger.error(`Error listing backups: ${error}`);
-      return {
-        success: false,
-        error: 'No se pudieron listar los backups',
-      };
-    }
+  /** Genera un dump; durante la operación el resto de /api responde 503. */
+  @Post()
+  async create() {
+    const file = await this.backups.createBackup();
+    return { ok: true, backup: file };
   }
 
   /**
-   * POST /api/admin/backups/create
-   * Crear backup manual.
+   * Restaura desde un archivo ya en Backups/ (`filename`)
+   * o subiendo multipart `file` (.sql.gz).
    */
-  @Post('create')
-  async createBackup() {
-    try {
-      const metadata = await this.backup.createBackup();
-      return {
-        success: true,
-        data: metadata,
-      };
-    } catch (error) {
-      this.logger.error(`Error creating backup: ${error}`);
-      return {
-        success: false,
-        error: 'No se pudo crear el backup',
-        details: error instanceof Error ? error.message : undefined,
-      };
+  @Post('restore')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: memoryStorage(),
+      limits: { fileSize: 512 * 1024 * 1024 },
+    }),
+  )
+  async restore(
+    @UploadedFile() file: Express.Multer.File | undefined,
+    @Body() body: RestoreBodyDto,
+  ) {
+    if (file) {
+      const result = await this.backups.saveUploadAndRestore(file);
+      return { ok: true, restored: result.filename };
     }
-  }
-
-  /**
-   * POST /api/admin/backups/cleanup
-   * Ejecutar limpieza de backups antiguos.
-   */
-  @Post('cleanup')
-  async cleanup() {
-    try {
-      await this.backup.cleanupOldBackups(30); // Retener 30 días
-      const totalSize = await this.backup.getBackupsTotalSize();
-
-      return {
-        success: true,
-        data: {
-          message: 'Limpieza completada',
-          totalSize,
-          totalSizeFormatted: this.formatBytes(totalSize),
-        },
-      };
-    } catch (error) {
-      this.logger.error(`Error cleaning up backups: ${error}`);
-      return {
-        success: false,
-        error: 'No se pudo ejecutar la limpieza',
-      };
+    if (body?.filename?.trim()) {
+      const result = await this.backups.restoreFromFilename(
+        body.filename.trim(),
+      );
+      return { ok: true, restored: result.filename };
     }
-  }
-
-  private formatBytes(bytes: number): string {
-    if (bytes === 0) return '0 B';
-    const k = 1024;
-    const sizes = ['B', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    throw new BadRequestException(
+      'Enviá multipart field `file` o JSON `{ "filename": "club360_….sql.gz" }`.',
+    );
   }
 }

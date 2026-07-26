@@ -3,12 +3,8 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource } from 'typeorm';
-import { GymMember } from '../entities/gym-member.entity';
-import { PosProduct } from '../entities/pos-product.entity';
-import { PosSale } from '../entities/pos-sale.entity';
-import { PosSaleLine } from '../entities/pos-sale-line.entity';
+import { Prisma } from '@prisma/client';
+import { PrismaService } from '../database/prisma.service';
 import { CreatePosSaleDto } from './dto/create-sale.dto';
 import {
   buildPageMeta,
@@ -35,10 +31,26 @@ export type PosSaleRow = {
   seller_username: string | null;
 };
 
+type SaleRawRow = {
+  id: number | bigint;
+  total_amount: number | string;
+  created_at: Date | string;
+  payment_method: string | null;
+  created_by: number | bigint | null;
+  seller_username: string | null;
+};
+
+type LockedProductRow = {
+  id: number;
+  name: string;
+  unit_price: number | string;
+  stock_qty: number;
+};
+
 @Injectable()
 export class PosSalesService {
   constructor(
-    @InjectDataSource() private readonly dataSource: DataSource,
+    private readonly prisma: PrismaService,
     private readonly dashboardCache: DashboardCacheService,
   ) {}
 
@@ -66,25 +78,7 @@ export class PosSalesService {
     return { start, end };
   }
 
-  private salesQueryBuilder(start: Date, end: Date) {
-    return this.dataSource
-      .getRepository(PosSale)
-      .createQueryBuilder('s')
-      .select('s.id', 'id')
-      .addSelect('s.total_amount', 'total_amount')
-      .addSelect('s.created_at', 'created_at')
-      .addSelect('s.payment_method', 'payment_method')
-      .addSelect('s.created_by', 'created_by')
-      .addSelect('m.username', 'seller_username')
-      .leftJoin(GymMember, 'm', 'm.id = s.created_by')
-      .where('s.created_at >= :start', { start })
-      .andWhere('s.created_at <= :end', { end })
-      .orderBy('s.created_at', 'DESC');
-  }
-
-  private mapSaleRows(
-    raw: Array<Record<string, unknown>>,
-  ): PosSaleRow[] {
+  private mapSaleRows(raw: SaleRawRow[]): PosSaleRow[] {
     return raw.map((r) => ({
       id: Number(r.id),
       total_amount: Number(r.total_amount),
@@ -99,6 +93,27 @@ export class PosSalesService {
     }));
   }
 
+  private async querySales(
+    start: Date,
+    end: Date,
+    limit?: number,
+    offset?: number,
+  ): Promise<SaleRawRow[]> {
+    return this.prisma.$queryRaw<SaleRawRow[]>`
+      SELECT s.id AS id,
+        s.total_amount AS total_amount,
+        s.created_at AS created_at,
+        s.payment_method AS payment_method,
+        s.created_by AS created_by,
+        m.username AS seller_username
+      FROM pos_sale s
+      LEFT JOIN gym_member m ON m.id = s.created_by
+      WHERE s.created_at >= ${start} AND s.created_at <= ${end}
+      ORDER BY s.created_at DESC
+      ${limit != null ? Prisma.sql`LIMIT ${limit} OFFSET ${offset ?? 0}` : Prisma.empty}
+    `;
+  }
+
   async listSales(
     fromStr: string,
     toStr: string,
@@ -108,22 +123,24 @@ export class PosSalesService {
     const { start, end } = this.parseDateRange(fromStr, toStr);
     const ps = Math.min(100, Math.max(1, pageSize));
     const pg = Math.max(1, page);
-    const base = this.salesQueryBuilder(start, end);
-    const total = await base.clone().getCount();
-    const raw = await base
-      .offset(paginationSkip(pg, ps))
-      .limit(ps)
-      .getRawMany();
+
+    const [totalRows, raw] = await Promise.all([
+      this.prisma.posSale.count({
+        where: { created_at: { gte: start, lte: end } },
+      }),
+      this.querySales(start, end, ps, paginationSkip(pg, ps)),
+    ]);
+
     return {
       sales: this.mapSaleRows(raw),
-      meta: buildPageMeta(total, pg, ps),
+      meta: buildPageMeta(totalRows, pg, ps),
     };
   }
 
   /** Compat: export CSV usa listado completo del rango (máx. 90 días). */
   async listSalesAll(fromStr: string, toStr: string): Promise<PosSaleRow[]> {
     const { start, end } = this.parseDateRange(fromStr, toStr);
-    const raw = await this.salesQueryBuilder(start, end).getRawMany();
+    const raw = await this.querySales(start, end);
     return this.mapSaleRows(raw);
   }
 
@@ -160,24 +177,24 @@ export class PosSalesService {
       qty,
     }));
 
-    const result = await this.dataSource.transaction(async (manager) => {
-      const prodRepo = manager.getRepository(PosProduct);
-      const saleRepo = manager.getRepository(PosSale);
-      const lineRepo = manager.getRepository(PosSaleLine);
-
+    const result = await this.prisma.$transaction(async (tx) => {
       let total = 0;
       const snapshots: Array<{
-        product: PosProduct;
+        product_id: number;
+        name: string;
         qty: number;
         unit_price: number;
         line_total: number;
       }> = [];
 
       for (const { product_id, qty } of mergedLines) {
-        const product = await prodRepo.findOne({
-          where: { id: product_id, active: 1 },
-          lock: { mode: 'pessimistic_write' },
-        });
+        const rows = await tx.$queryRaw<LockedProductRow[]>`
+          SELECT id, name, unit_price, stock_qty
+          FROM pos_product
+          WHERE id = ${product_id} AND active = 1
+          FOR UPDATE
+        `;
+        const product = rows[0];
         if (!product) {
           throw new NotFoundException(
             `Producto ${product_id} no existe o no está a la venta.`,
@@ -192,31 +209,36 @@ export class PosSalesService {
         const lineTotal = unitPrice * qty;
         total += lineTotal;
         snapshots.push({
-          product,
+          product_id: product.id,
+          name: product.name,
           qty,
           unit_price: unitPrice,
           line_total: lineTotal,
         });
       }
 
-      const sale = saleRepo.create({
-        total_amount: total,
-        created_by: actor.userId,
-        payment_method: dto.payment_method,
+      const sale = await tx.posSale.create({
+        data: {
+          total_amount: total,
+          created_by: actor.userId,
+          payment_method: dto.payment_method,
+        },
       });
-      await saleRepo.save(sale);
 
       for (const snap of snapshots) {
-        snap.product.stock_qty -= snap.qty;
-        await prodRepo.save(snap.product);
-        const line = lineRepo.create({
-          sale_id: sale.id,
-          product_id: snap.product.id,
-          qty: snap.qty,
-          unit_price: snap.unit_price,
-          line_total: snap.line_total,
+        await tx.posProduct.update({
+          where: { id: snap.product_id },
+          data: { stock_qty: { decrement: snap.qty } },
         });
-        await lineRepo.save(line);
+        await tx.posSaleLine.create({
+          data: {
+            sale_id: sale.id,
+            product_id: snap.product_id,
+            qty: snap.qty,
+            unit_price: snap.unit_price,
+            line_total: snap.line_total,
+          },
+        });
       }
 
       return { ok: true as const, sale_id: sale.id, total_amount: total };

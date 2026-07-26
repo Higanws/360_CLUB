@@ -2,10 +2,17 @@ import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { api } from '../api';
 import type { PaginatedMeta } from '../pagination';
 
-export function useActivitiesList(page: number, pageSize: number) {
+export function useActivitiesList(
+  page: number,
+  pageSize: number,
+  q = '',
+) {
   return useQuery({
-    queryKey: ['activities', 'list', page, pageSize],
+    queryKey: ['activities', 'list', page, pageSize, q],
     queryFn: async () => {
+      const params: Record<string, string | number> = { page, pageSize };
+      const qTrim = q.trim();
+      if (qTrim) params.q = qTrim;
       const { data } = await api.get<{
         activities: Array<{
           id: number;
@@ -16,7 +23,7 @@ export function useActivitiesList(page: number, pageSize: number) {
           video_count: number;
         }>;
         meta: PaginatedMeta;
-      }>('/activities', { params: { page, pageSize } });
+      }>('/activities', { params });
       return data;
     },
     placeholderData: keepPreviousData,

@@ -1,7 +1,7 @@
+import type { GymMember } from '@prisma/client';
 import type { ClubRoleName } from '../../domain/club/club-roles';
-import type { GymMember } from '../../../entities/gym-member.entity';
 
-/** Lectura de socios/personal — puerto de persistencia (adaptador TypeORM). */
+/** Lectura de socios/personal — puerto de persistencia (adaptador Prisma). */
 export interface GymMemberReadRepository {
   countByRole(role: ClubRoleName): Promise<number>;
   countActiveMembers(): Promise<number>;

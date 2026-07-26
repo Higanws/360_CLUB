@@ -130,10 +130,10 @@ export function TrainingAssignmentsListPage() {
       <div className="pay-toolbar">
         <MmSearchField
           grow
-          label="Filtrar por socio o entrenador"
+          label="Buscar"
           value={filterQuery}
           onChange={(e) => setFilterQuery(e.target.value)}
-          placeholder="Socio, ID de socio, entrenador o título de rutina…"
+          placeholder="Socio, ID, entrenador o rutina…"
           autoComplete="off"
         />
       </div>

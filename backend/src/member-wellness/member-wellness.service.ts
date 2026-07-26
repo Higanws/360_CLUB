@@ -4,13 +4,8 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { GeneralSetting } from '../entities/general-setting.entity';
-import { GymMember } from '../entities/gym-member.entity';
-import { MemberWeeklyRoutine } from '../entities/member-weekly-routine.entity';
-import { NutritionPlan } from '../entities/nutrition-plan.entity';
-import { TrainingAssignment } from '../entities/training-assignment.entity';
+import type { GymMember } from '@prisma/client';
+import { PrismaService } from '../database/prisma.service';
 import { parseMealsScheduleJson } from '../nutrition/schedule-json.util';
 import type { NutritionScheduleSlot } from '../nutrition/schedule-json.util';
 import {
@@ -21,6 +16,7 @@ import { normalizeActivityDifficulty } from '../activities/activity-difficulty';
 import { normalizeClubRole } from '../shared/domain/club/club-roles';
 import { assertStaffOwnsMember } from '../shared/application/security/staff-member-scope';
 import { toIsoDateOnly } from '../shared/domain/shared/iso-date';
+
 export type NutritionPlanPayload = {
   member_id: number;
   first_name: string | null;
@@ -40,28 +36,27 @@ function dayKeysFromMask(mask: number): string[] {
   return out;
 }
 
+function parseRoutineSnapshotJson(
+  raw: string | null | undefined,
+): Record<string, unknown> | null {
+  if (raw == null || raw === '') return null;
+  const t = String(raw).trim();
+  if (!t) return null;
+  try {
+    const p = JSON.parse(t) as unknown;
+    return typeof p === 'object' && p !== null
+      ? (p as Record<string, unknown>)
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 type JwtActor = { userId: number; role_name: string };
 
 @Injectable()
 export class MemberWellnessService {
-  constructor(
-    @InjectRepository(GeneralSetting)
-    private readonly settings: Repository<GeneralSetting>,
-    @InjectRepository(GymMember)
-    private readonly members: Repository<GymMember>,
-    @InjectRepository(NutritionPlan)
-    private readonly plans: Repository<NutritionPlan>,
-    @InjectRepository(TrainingAssignment)
-    private readonly assignments: Repository<TrainingAssignment>,
-    @InjectRepository(MemberWeeklyRoutine)
-    private readonly weeklyRows: Repository<MemberWeeklyRoutine>,
-  ) {}
-
-  private async settingsRow(): Promise<GeneralSetting | null> {
-    return (
-      (await this.settings.find({ take: 1, order: { id: 'ASC' } }))[0] ?? null
-    );
-  }
+  constructor(private readonly prisma: PrismaService) {}
 
   private async assertStaffCanViewMember(
     actor: JwtActor,
@@ -93,7 +88,9 @@ export class MemberWellnessService {
           'No puedes consultar datos de otro socio.',
         );
       }
-      const m = await this.members.findOne({ where: { id: actor.userId } });
+      const m = await this.prisma.gymMember.findUnique({
+        where: { id: actor.userId },
+      });
       if (!m || normalizeClubRole(m.role_name) !== 'member') {
         throw new NotFoundException('Socio no encontrado.');
       }
@@ -110,7 +107,9 @@ export class MemberWellnessService {
       );
     }
 
-    const m = await this.members.findOne({ where: { id: memberIdParam } });
+    const m = await this.prisma.gymMember.findUnique({
+      where: { id: memberIdParam },
+    });
     if (!m || normalizeClubRole(m.role_name) !== 'member') {
       throw new NotFoundException('Socio no encontrado.');
     }
@@ -127,7 +126,7 @@ export class MemberWellnessService {
     memberIdParam?: number,
   ): Promise<{ plan: NutritionPlanPayload }> {
     const m = await this.resolveTargetMember(actor, memberIdParam);
-    const plan = await this.plans.findOne({
+    const plan = await this.prisma.nutritionPlan.findUnique({
       where: { member_id: m.id },
     });
     if (!plan) {
@@ -142,16 +141,14 @@ export class MemberWellnessService {
         },
       };
     }
-    const schedule_slots = parseMealsScheduleJson(
-      plan.meals_schedule_json as unknown,
-    );
+    const schedule_slots = parseMealsScheduleJson(plan.meals_schedule_json);
     return {
       plan: {
         member_id: m.id,
         first_name: m.first_name,
         last_name: m.last_name,
-        valid_from: toIsoDateOnly(plan.valid_from as Date),
-        valid_to: toIsoDateOnly(plan.valid_to as Date),
+        valid_from: toIsoDateOnly(plan.valid_from),
+        valid_to: toIsoDateOnly(plan.valid_to),
         schedule_slots,
       },
     };
@@ -183,20 +180,30 @@ export class MemberWellnessService {
   }> {
     const target = await this.resolveTargetMember(actor, memberIdParam);
     const week_start_default = madridMondayWeekStart();
-    const a = await this.assignments
-      .createQueryBuilder('a')
-      .innerJoin('a.members', 'm', 'm.member_id = :uid', { uid: target.id })
-      .leftJoinAndSelect('a.routine', 'r')
-      .leftJoinAndSelect('r.lines', 'l')
-      .leftJoinAndSelect('l.activity', 'act')
-      .leftJoinAndSelect('act.videos', 'av')
-      .orderBy('a.id', 'DESC')
-      .addOrderBy('l.sort_order', 'ASC')
-      .addOrderBy('l.id', 'ASC')
-      .addOrderBy('av.sort_order', 'ASC')
-      .addOrderBy('av.id', 'ASC')
-      .take(1)
-      .getOne();
+    const a = await this.prisma.trainingAssignment.findFirst({
+      where: {
+        members: { some: { member_id: target.id } },
+      },
+      include: {
+        routine: {
+          include: {
+            lines: {
+              include: {
+                activity: {
+                  include: {
+                    videos: {
+                      orderBy: [{ sort_order: 'asc' }, { id: 'asc' }],
+                    },
+                  },
+                },
+              },
+              orderBy: [{ sort_order: 'asc' }, { id: 'asc' }],
+            },
+          },
+        },
+      },
+      orderBy: { id: 'desc' },
+    });
 
     if (!a?.routine) {
       return { week_start_default, assignment: null };
@@ -263,12 +270,19 @@ export class MemberWellnessService {
         'week_start debe ser un lunes (calendario Europe/Madrid).',
       );
     }
-    const row = await this.weeklyRows.findOne({
-      where: { member_id: target.id, week_start },
+    const row = await this.prisma.memberWeeklyRoutine.findUnique({
+      where: {
+        member_id_week_start: {
+          member_id: target.id,
+          week_start: new Date(`${week_start}T00:00:00.000Z`),
+        },
+      },
     });
     return {
       week_start,
-      routine_snapshot_json: row?.routine_snapshot_json ?? null,
+      routine_snapshot_json: parseRoutineSnapshotJson(
+        row?.routine_snapshot_json,
+      ),
       updated_at: row?.updated_at
         ? row.updated_at instanceof Date
           ? row.updated_at.toISOString()
@@ -276,5 +290,4 @@ export class MemberWellnessService {
         : null,
     };
   }
-
 }

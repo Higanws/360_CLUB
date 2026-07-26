@@ -3,8 +3,9 @@ import {
   Injectable,
   Logger,
 } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Prisma } from '@prisma/client';
+import type { GymMember } from '@prisma/client';
+import { PrismaService } from '../database/prisma.service';
 import { normalizeClubRole } from '../shared/domain/club/club-roles';
 import {
   buildPageMeta,
@@ -14,10 +15,6 @@ import {
 import { DashboardCacheService } from '../shared/cache/dashboard-cache.service';
 import { normalizeMemberLookupToken } from '../shared/domain/club/member-lookup';
 import { toIsoDateOnly } from '../shared/domain/shared/iso-date';
-import { ClubAccessLog } from '../entities/club-access-log.entity';
-import { GeneralSetting } from '../entities/general-setting.entity';
-import { GymMember } from '../entities/gym-member.entity';
-import { MembershipPayment } from '../entities/membership-payment.entity';
 import { todayYmdMadrid } from '../member-wellness/madrid-week.util';
 
 export { normalizeMemberLookupToken } from '../shared/domain/club/member-lookup';
@@ -42,26 +39,30 @@ export type AccessCheckResult = {
 
 type JwtActor = { userId: number; role_name: string };
 
+type AccessLogPersist = {
+  outcome: string;
+  status_display: string | null;
+  member_id: number | null;
+  due_date_snapshot?: string | null;
+  days_remaining?: number | null;
+  days_overdue?: number | null;
+};
+
+function dateOnly(ymd: string): Date {
+  return new Date(`${ymd}T00:00:00.000Z`);
+}
+
 @Injectable()
 export class AccessControlService {
   private readonly logger = new Logger(AccessControlService.name);
 
   constructor(
-    @InjectRepository(GeneralSetting)
-    private readonly settings: Repository<GeneralSetting>,
-    @InjectRepository(GymMember)
-    private readonly members: Repository<GymMember>,
-    @InjectRepository(MembershipPayment)
-    private readonly payments: Repository<MembershipPayment>,
-    @InjectRepository(ClubAccessLog)
-    private readonly logs: Repository<ClubAccessLog>,
+    private readonly prisma: PrismaService,
     private readonly dashboardCache: DashboardCacheService,
   ) {}
 
-  private async settingsRow(): Promise<GeneralSetting | null> {
-    return (
-      (await this.settings.find({ take: 1, order: { id: 'ASC' } }))[0] ?? null
-    );
+  private async settingsRow() {
+    return this.prisma.generalSetting.findFirst({ orderBy: { id: 'asc' } });
   }
 
   private async assertStaffMayViewMember(
@@ -82,51 +83,53 @@ export class AccessControlService {
 
     if (/^\d+$/.test(q)) {
       const id = parseInt(q, 10);
-      return this.members
-        .createQueryBuilder('m')
-        .where('m.id = :id', { id })
-        .andWhere('LOWER(TRIM(m.role_name)) = :r', { r: 'member' })
-        .getOne();
+      const rows = await this.prisma.$queryRaw<GymMember[]>`
+        SELECT *
+        FROM gym_member m
+        WHERE m.id = ${id}
+          AND LOWER(TRIM(m.role_name)) = 'member'
+        LIMIT 1
+      `;
+      return rows[0] ?? null;
     }
 
     const token = normalizeMemberLookupToken(q);
     if (!token) return null;
 
-    const byCode = await this.members
-      .createQueryBuilder('m')
-      .where('LOWER(TRIM(m.role_name)) = :r', { r: 'member' })
-      .andWhere(
-        "UPPER(REPLACE(TRIM(COALESCE(m.member_id,'')), ' ', '')) = :t",
-        { t: token },
-      )
-      .getOne();
-    if (byCode) return byCode;
+    const byCode = await this.prisma.$queryRaw<GymMember[]>`
+      SELECT *
+      FROM gym_member m
+      WHERE LOWER(TRIM(m.role_name)) = 'member'
+        AND UPPER(REPLACE(TRIM(COALESCE(m.member_id, '')), ' ', '')) = ${token}
+      LIMIT 1
+    `;
+    if (byCode[0]) return byCode[0];
 
-    return this.members
-      .createQueryBuilder('m')
-      .where('LOWER(TRIM(m.role_name)) = :r', { r: 'member' })
-      .andWhere(
-        "UPPER(REPLACE(TRIM(COALESCE(m.di_dni_number,'')), ' ', '')) = :t",
-        { t: token },
-      )
-      .getOne();
+    const byDni = await this.prisma.$queryRaw<GymMember[]>`
+      SELECT *
+      FROM gym_member m
+      WHERE LOWER(TRIM(m.role_name)) = 'member'
+        AND UPPER(REPLACE(TRIM(COALESCE(m.di_dni_number, '')), ' ', '')) = ${token}
+      LIMIT 1
+    `;
+    return byDni[0] ?? null;
   }
 
   private async latestPaymentEnd(memberId: number): Promise<{
     end: string | null;
     start: string | null;
   }> {
-    const row = await this.payments
-      .createQueryBuilder('mp')
-      .where('mp.member_id = :mid', { mid: memberId })
-      .andWhere('mp.end_date IS NOT NULL')
-      .orderBy('mp.end_date', 'DESC')
-      .addOrderBy('mp.mp_id', 'DESC')
-      .getOne();
+    const row = await this.prisma.membershipPayment.findFirst({
+      where: {
+        member_id: memberId,
+        end_date: { not: null },
+      },
+      orderBy: [{ end_date: 'desc' }, { mp_id: 'desc' }],
+    });
     if (!row?.end_date) return { end: null, start: null };
     return {
-      end: toIsoDateOnly(row.end_date as Date),
-      start: toIsoDateOnly(row.start_date as Date),
+      end: toIsoDateOnly(row.end_date),
+      start: toIsoDateOnly(row.start_date),
     };
   }
 
@@ -172,7 +175,7 @@ export class AccessControlService {
         valid: false,
         status: 'VENCIDO',
         message: 'Membresía marcada como caducada en el sistema.',
-        due_date: toIsoDateOnly(member.membership_valid_to as Date),
+        due_date: toIsoDateOnly(member.membership_valid_to),
         cycle_type: '',
         days_remaining: null,
         days_overdue: null,
@@ -182,11 +185,11 @@ export class AccessControlService {
     const pay = await this.latestPaymentEnd(member.id);
     let dueDate = pay.end;
     if (!dueDate) {
-      dueDate = toIsoDateOnly(member.membership_valid_to as Date);
+      dueDate = toIsoDateOnly(member.membership_valid_to);
     }
 
-    const vf = toIsoDateOnly(member.membership_valid_from as Date);
-    const vt = toIsoDateOnly(member.membership_valid_to as Date);
+    const vf = toIsoDateOnly(member.membership_valid_from);
+    const vt = toIsoDateOnly(member.membership_valid_to);
     if (vf && today < vf) {
       return {
         valid: false,
@@ -264,12 +267,13 @@ export class AccessControlService {
     memberId: number,
     accessDate: string,
   ): Promise<boolean> {
-    const n = await this.logs
-      .createQueryBuilder('l')
-      .where('l.member_id = :id', { id: memberId })
-      .andWhere('l.access_date = :d', { d: accessDate })
-      .andWhere("l.outcome = 'allowed'")
-      .getCount();
+    const n = await this.prisma.clubAccessLog.count({
+      where: {
+        member_id: memberId,
+        access_date: dateOnly(accessDate),
+        outcome: 'allowed',
+      },
+    });
     return n > 0;
   }
 
@@ -303,28 +307,25 @@ export class AccessControlService {
       return baseEmpty();
     }
 
-    const persist = async (
-      partial: Partial<ClubAccessLog> & {
-        outcome: string;
-        status_display: string | null;
-        member_id: number | null;
-      },
-    ) => {
+    const persist = async (partial: AccessLogPersist) => {
       if (!record) return;
       try {
-        const row = this.logs.create({
-          member_id: partial.member_id,
-          access_date: accessDate,
-          access_at: new Date(),
-          staff_actor_id: actor.userId,
-          outcome: partial.outcome,
-          status_display: partial.status_display,
-          lookup_raw: trimmed.slice(0, 160),
-          due_date_snapshot: partial.due_date_snapshot ?? null,
-          days_remaining: partial.days_remaining ?? null,
-          days_overdue: partial.days_overdue ?? null,
+        await this.prisma.clubAccessLog.create({
+          data: {
+            member_id: partial.member_id,
+            access_date: dateOnly(accessDate),
+            access_at: new Date(),
+            staff_actor_id: actor.userId,
+            outcome: partial.outcome,
+            status_display: partial.status_display,
+            lookup_raw: trimmed.slice(0, 160),
+            due_date_snapshot: partial.due_date_snapshot
+              ? dateOnly(partial.due_date_snapshot)
+              : null,
+            days_remaining: partial.days_remaining ?? null,
+            days_overdue: partial.days_overdue ?? null,
+          },
         });
-        await this.logs.save(row);
         await this.dashboardCache.invalidateBusinessMetrics();
       } catch (e) {
         this.logger.warn(
@@ -519,23 +520,6 @@ export class AccessControlService {
     const pg = Math.max(1, page);
     const settings = await this.settingsRow();
     const ownOnly = settings?.staff_can_view_own_member === 1;
-    const qb = this.logs
-      .createQueryBuilder('l')
-      .leftJoin(GymMember, 'm', 'm.id = l.member_id')
-      .leftJoin(GymMember, 's', 's.id = l.staff_actor_id')
-      .select([
-        'l.id AS id',
-        'l.access_at AS access_at',
-        'l.access_date AS access_date',
-        'l.outcome AS outcome',
-        'l.status_display AS status_display',
-        'l.lookup_raw AS lookup_raw',
-        'l.member_id AS member_id',
-        'm.first_name AS first_name',
-        'm.last_name AS last_name',
-        's.first_name AS staff_first_name',
-        's.last_name AS staff_last_name',
-      ]);
 
     let from = this.isYmd(fromYmd) ? fromYmd : null;
     let to = this.isYmd(toYmd) ? toYmd : null;
@@ -544,53 +528,85 @@ export class AccessControlService {
       from = to;
       to = t;
     }
+
+    const conditions: Prisma.Sql[] = [];
     if (from) {
-      qb.andWhere('l.access_date >= :fromD', { fromD: from });
+      conditions.push(Prisma.sql`l.access_date >= ${from}`);
     }
     if (to) {
-      qb.andWhere('l.access_date <= :toD', { toD: to });
+      conditions.push(Prisma.sql`l.access_date <= ${to}`);
     }
     if (
       normalizeClubRole(actor.role_name) === 'staff_member' &&
       ownOnly
     ) {
-      qb.andWhere(
-        '(m.assign_staff_mem = :staffId OR l.staff_actor_id = :staffId)',
-        { staffId: actor.userId },
+      conditions.push(
+        Prisma.sql`(m.assign_staff_mem = ${actor.userId} OR l.staff_actor_id = ${actor.userId})`,
       );
     }
+    const whereSql =
+      conditions.length > 0
+        ? Prisma.sql`WHERE ${Prisma.join(conditions, ' AND ')}`
+        : Prisma.empty;
 
-    const total = await qb.clone().getCount();
-    const rows = await qb
-      .orderBy('l.id', 'DESC')
-      .offset(paginationSkip(pg, ps))
-      .limit(ps)
-      .getRawMany<{
-        id: number;
+    const totalRows = await this.prisma.$queryRaw<
+      Array<{ cnt: bigint | number }>
+    >`
+      SELECT COUNT(*) AS cnt
+      FROM club_access_log l
+      LEFT JOIN gym_member m ON m.id = l.member_id
+      LEFT JOIN gym_member s ON s.id = l.staff_actor_id
+      ${whereSql}
+    `;
+    const total = Number(totalRows[0]?.cnt ?? 0);
+
+    const rows = await this.prisma.$queryRaw<
+      Array<{
+        id: number | bigint;
         access_at: Date | string;
         access_date: Date | string;
         outcome: string;
         status_display: string | null;
         lookup_raw: string | null;
-        member_id: number | null;
+        member_id: number | bigint | null;
         first_name: string | null;
         last_name: string | null;
         staff_first_name: string | null;
         staff_last_name: string | null;
-      }>();
+      }>
+    >`
+      SELECT
+        l.id AS id,
+        l.access_at AS access_at,
+        l.access_date AS access_date,
+        l.outcome AS outcome,
+        l.status_display AS status_display,
+        l.lookup_raw AS lookup_raw,
+        l.member_id AS member_id,
+        m.first_name AS first_name,
+        m.last_name AS last_name,
+        s.first_name AS staff_first_name,
+        s.last_name AS staff_last_name
+      FROM club_access_log l
+      LEFT JOIN gym_member m ON m.id = l.member_id
+      LEFT JOIN gym_member s ON s.id = l.staff_actor_id
+      ${whereSql}
+      ORDER BY l.id DESC
+      LIMIT ${ps} OFFSET ${paginationSkip(pg, ps)}
+    `;
 
     return {
       logs: rows.map((r) => ({
-        id: r.id,
+        id: Number(r.id),
         access_at:
           r.access_at instanceof Date
             ? r.access_at.toISOString()
             : String(r.access_at),
-        access_date: toIsoDateOnly(r.access_date as Date) ?? String(r.access_date),
+        access_date: toIsoDateOnly(r.access_date) ?? String(r.access_date),
         outcome: r.outcome,
         status_display: r.status_display,
         lookup_raw: r.lookup_raw,
-        member_id: r.member_id,
+        member_id: r.member_id == null ? null : Number(r.member_id),
         first_name: r.first_name,
         last_name: r.last_name,
         staff_first_name: r.staff_first_name,

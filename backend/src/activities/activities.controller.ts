@@ -40,7 +40,11 @@ export class ActivitiesController {
 
   @Get()
   list(@Query() q: PaginationQueryDto) {
-    return this.activities.listActivities(q.page ?? 1, q.pageSize ?? 25);
+    return this.activities.listActivities(
+      q.page ?? 1,
+      q.pageSize ?? 25,
+      q.q,
+    );
   }
 
   @Get(':id')

@@ -4,14 +4,9 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository } from 'typeorm';
-import { GeneralSetting } from '../entities/general-setting.entity';
-import { GymMember } from '../entities/gym-member.entity';
-import { TrainingAssignment } from '../entities/training-assignment.entity';
-import { TrainingAssignmentMember } from '../entities/training-assignment-member.entity';
-import { TrainingAssignmentTrainer } from '../entities/training-assignment-trainer.entity';
-import { TrainingRoutine } from '../entities/training-routine.entity';
+import { Prisma } from '@prisma/client';
+import type { GymMember, TrainingAssignment } from '@prisma/client';
+import { PrismaService } from '../database/prisma.service';
 import { normalizeClubRole } from '../shared/domain/club/club-roles';
 import { staffMustUseOwnMembersOnly } from '../shared/application/security/staff-member-scope';
 import {
@@ -21,7 +16,13 @@ import {
 } from '../shared/dto/paginated-meta';
 import { CreateTrainingAssignmentDto } from './dto/create-training-assignment.dto';
 
-function memberDisplayName(m: GymMember | undefined): string {
+type AssignmentWithRelations = TrainingAssignment & {
+  routine?: { title: string } | null;
+  members?: Array<{ member_id: number; member: GymMember | null }>;
+  trainers?: Array<{ trainer_member_id: number; trainer: GymMember | null }>;
+};
+
+function memberDisplayName(m: GymMember | null | undefined): string {
   if (!m) return '—';
   const parts = [m.first_name, m.last_name].filter(Boolean).join(' ').trim();
   if (parts) return parts;
@@ -30,23 +31,10 @@ function memberDisplayName(m: GymMember | undefined): string {
 
 @Injectable()
 export class TrainingAssignmentsService {
-  constructor(
-    @InjectRepository(TrainingAssignment)
-    private readonly assignments: Repository<TrainingAssignment>,
-    @InjectRepository(TrainingAssignmentMember)
-    private readonly assignmentMembers: Repository<TrainingAssignmentMember>,
-    @InjectRepository(TrainingAssignmentTrainer)
-    private readonly assignmentTrainers: Repository<TrainingAssignmentTrainer>,
-    @InjectRepository(TrainingRoutine)
-    private readonly routines: Repository<TrainingRoutine>,
-    @InjectRepository(GymMember)
-    private readonly members: Repository<GymMember>,
-    @InjectRepository(GeneralSetting)
-    private readonly settings: Repository<GeneralSetting>,
-  ) {}
+  constructor(private readonly prisma: PrismaService) {}
 
   private canViewAssignment(
-    a: TrainingAssignment,
+    a: AssignmentWithRelations,
     actor: { userId: number; role_name: string },
   ): boolean {
     const ar = normalizeClubRole(actor.role_name);
@@ -83,70 +71,69 @@ export class TrainingAssignmentsService {
     const ps = Math.min(100, Math.max(1, pageSize));
     const pg = Math.max(1, page);
 
-    const baseQb = this.assignments
-      .createQueryBuilder('a')
-      .leftJoin('a.trainers', 't')
-      .leftJoin('a.members', 'am')
-      .leftJoin('am.member', 'gm')
-      .leftJoin('a.routine', 'r');
-
+    const conditions: Prisma.Sql[] = [];
     if (staffMustUseOwnMembersOnly(actor)) {
-      baseQb.andWhere(
-        '(t.trainer_member_id = :uid OR gm.assign_staff_mem = :uid)',
-        { uid: actor.userId },
+      conditions.push(
+        Prisma.sql`(t.trainer_member_id = ${actor.userId} OR gm.assign_staff_mem = ${actor.userId})`,
       );
     }
     if (memberId != null && memberId > 0) {
-      baseQb.andWhere('am.member_id = :memberId', { memberId });
+      conditions.push(Prisma.sql`am.member_id = ${memberId}`);
     }
     if (trainerId != null && trainerId > 0) {
-      baseQb.andWhere('t.trainer_member_id = :trainerId', { trainerId });
+      conditions.push(Prisma.sql`t.trainer_member_id = ${trainerId}`);
     }
     const qTrim = q?.trim();
     if (qTrim) {
       const like = `%${qTrim.replace(/[%_\\]/g, '\\$&')}%`;
-      baseQb.andWhere(
-        `(r.title LIKE :like OR gm.first_name LIKE :like OR gm.last_name LIKE :like OR CAST(gm.id AS CHAR) LIKE :like)`,
-        { like },
+      conditions.push(
+        Prisma.sql`(r.title LIKE ${like} OR gm.first_name LIKE ${like} OR gm.last_name LIKE ${like} OR CAST(gm.id AS CHAR) LIKE ${like})`,
       );
     }
+    const whereSql =
+      conditions.length > 0
+        ? Prisma.sql`WHERE ${Prisma.join(conditions, ' AND ')}`
+        : Prisma.empty;
 
-    const total = await baseQb
-      .clone()
-      .select('a.id')
-      .distinct(true)
-      .getCount();
+    const baseFrom = Prisma.sql`
+      FROM training_assignment a
+      LEFT JOIN training_assignment_trainer t ON t.assignment_id = a.id
+      LEFT JOIN training_assignment_member am ON am.assignment_id = a.id
+      LEFT JOIN gym_member gm ON gm.id = am.member_id
+      LEFT JOIN training_routine r ON r.id = a.routine_id
+      ${whereSql}
+    `;
 
-    const idRows = await baseQb
-      .clone()
-      .select('a.id', 'id')
-      .distinct(true)
-      .orderBy('a.id', 'DESC')
-      .offset(paginationSkip(pg, ps))
-      .limit(ps)
-      .getRawMany<{ id: number }>();
+    const totalRows = await this.prisma.$queryRaw<Array<{ cnt: bigint | number }>>`
+      SELECT COUNT(DISTINCT a.id) AS cnt ${baseFrom}
+    `;
+    const total = Number(totalRows[0]?.cnt ?? 0);
+
+    const idRows = await this.prisma.$queryRaw<Array<{ id: number | bigint }>>`
+      SELECT DISTINCT a.id AS id ${baseFrom}
+      ORDER BY a.id DESC
+      LIMIT ${ps} OFFSET ${paginationSkip(pg, ps)}
+    `;
 
     const idList = idRows.map((r) => Number(r.id)).filter((id) => id > 0);
     if (!idList.length) {
       return { assignments: [], meta: buildPageMeta(total, pg, ps) };
     }
 
-    const rows = await this.assignments.find({
-      where: { id: In(idList) },
-      relations: [
-        'routine',
-        'members',
-        'members.member',
-        'trainers',
-        'trainers.trainer',
-      ],
-      order: { id: 'DESC' },
-    });
+    const rows = (await this.prisma.trainingAssignment.findMany({
+      where: { id: { in: idList } },
+      include: {
+        routine: true,
+        members: { include: { member: true } },
+        trainers: { include: { trainer: true } },
+      },
+      orderBy: { id: 'desc' },
+    })) as AssignmentWithRelations[];
 
     const byId = new Map(rows.map((a) => [a.id, a]));
     const ordered = idList
       .map((id) => byId.get(id))
-      .filter((a): a is TrainingAssignment => a != null);
+      .filter((a): a is AssignmentWithRelations => a != null);
 
     return {
       assignments: ordered.map((a) => ({
@@ -173,16 +160,14 @@ export class TrainingAssignmentsService {
     id: number,
     actor: { userId: number; role_name: string },
   ) {
-    const a = await this.assignments.findOne({
+    const a = (await this.prisma.trainingAssignment.findUnique({
       where: { id },
-      relations: [
-        'routine',
-        'members',
-        'members.member',
-        'trainers',
-        'trainers.trainer',
-      ],
-    });
+      include: {
+        routine: true,
+        members: { include: { member: true } },
+        trainers: { include: { trainer: true } },
+      },
+    })) as AssignmentWithRelations | null;
     if (!a) throw new NotFoundException('Asignación no encontrada.');
     if (!this.canViewAssignment(a, actor)) {
       throw new ForbiddenException('No tienes acceso a esta asignación.');
@@ -216,7 +201,9 @@ export class TrainingAssignmentsService {
     dto: CreateTrainingAssignmentDto,
     actor: { userId: number; role_name: string },
   ) {
-    const routine = await this.routines.findOne({ where: { id: dto.routine_id } });
+    const routine = await this.prisma.trainingRoutine.findUnique({
+      where: { id: dto.routine_id },
+    });
     if (!routine) throw new BadRequestException('Rutina no encontrada.');
 
     const memberIds = [...new Set(dto.member_ids)];
@@ -225,27 +212,22 @@ export class TrainingAssignmentsService {
     await this.assertMembers(memberIds, actor);
     await this.assertTrainers(trainerIds, actor);
 
-    const row = this.assignments.create({
-      routine: { id: dto.routine_id } as TrainingRoutine,
+    const saved = await this.prisma.trainingAssignment.create({
+      data: { routine_id: dto.routine_id },
     });
-    const saved = await this.assignments.save(row);
 
-    await this.assignmentMembers.save(
-      memberIds.map((member_id) =>
-        this.assignmentMembers.create({
-          assignment_id: saved.id,
-          member_id,
-        }),
-      ),
-    );
-    await this.assignmentTrainers.save(
-      trainerIds.map((trainer_member_id) =>
-        this.assignmentTrainers.create({
-          assignment_id: saved.id,
-          trainer_member_id,
-        }),
-      ),
-    );
+    await this.prisma.trainingAssignmentMember.createMany({
+      data: memberIds.map((member_id) => ({
+        assignment_id: saved.id,
+        member_id,
+      })),
+    });
+    await this.prisma.trainingAssignmentTrainer.createMany({
+      data: trainerIds.map((trainer_member_id) => ({
+        assignment_id: saved.id,
+        trainer_member_id,
+      })),
+    });
 
     return this.getOne(saved.id, actor);
   }
@@ -255,15 +237,20 @@ export class TrainingAssignmentsService {
     actor: { userId: number; role_name: string },
   ): Promise<void> {
     await this.getOne(id, actor);
-    const res = await this.assignments.delete({ id });
-    if (!res.affected) throw new NotFoundException('Asignación no encontrada.');
+    try {
+      await this.prisma.trainingAssignment.delete({ where: { id } });
+    } catch {
+      throw new NotFoundException('Asignación no encontrada.');
+    }
   }
 
   private async assertMembers(
     ids: number[],
     actor: { userId: number; role_name: string },
   ): Promise<void> {
-    const rows = await this.members.findBy({ id: In(ids) });
+    const rows = await this.prisma.gymMember.findMany({
+      where: { id: { in: ids } },
+    });
     if (rows.length !== ids.length) {
       throw new BadRequestException('Algún socio no existe.');
     }
@@ -297,7 +284,9 @@ export class TrainingAssignmentsService {
         }
       }
     }
-    const rows = await this.members.findBy({ id: In(ids) });
+    const rows = await this.prisma.gymMember.findMany({
+      where: { id: { in: ids } },
+    });
     if (rows.length !== ids.length) {
       throw new BadRequestException('Algún entrenador no existe.');
     }

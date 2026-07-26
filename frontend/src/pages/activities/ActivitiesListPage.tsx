@@ -1,6 +1,7 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { MmSearchField } from '../../components/ui/MmSearchField';
 import { MmSelect } from '../../components/ui/MmSelect';
 import { routes } from '../../config/member-management';
 import { memberPortalRoutes } from '../../config/member-portal';
@@ -11,6 +12,7 @@ import {
   DEFAULT_PAGE_SIZE,
   pageRangeLabel,
 } from '../../lib/pagination';
+import { useDebouncedValue } from '../../hooks/useDebouncedValue';
 import { useActivitiesList } from '../../lib/queries/lists';
 import { useAuth } from '../../context/AuthContext';
 
@@ -32,10 +34,20 @@ export function ActivitiesListPage() {
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
+  const [filterQuery, setFilterQuery] = useState('');
+  const debouncedQuery = useDebouncedValue(filterQuery, 300);
 
-  const { data, isLoading, isError } = useActivitiesList(page, pageSize);
+  const { data, isLoading, isError } = useActivitiesList(
+    page,
+    pageSize,
+    debouncedQuery,
+  );
   const rows = (data?.activities ?? []) as Row[];
   const meta = data?.meta;
+
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedQuery]);
 
   useEffect(() => {
     if (!loading && !user) navigate('/login', { replace: true });
@@ -88,6 +100,18 @@ export function ActivitiesListPage() {
       </header>
 
       {error ? <p className="login-error">{error}</p> : null}
+
+      <div className="pay-toolbar">
+        <MmSearchField
+          grow
+          label="Buscar"
+          value={filterQuery}
+          onChange={(e) => setFilterQuery(e.target.value)}
+          placeholder="Título o categoría…"
+          autoComplete="off"
+        />
+      </div>
+
       {meta ? (
         <p className="muted small">{pageRangeLabel(meta)}</p>
       ) : null}

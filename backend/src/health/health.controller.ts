@@ -1,19 +1,21 @@
 import { Controller, Get } from '@nestjs/common';
 import { Public } from '../auth/public.decorator';
-import { DataSource } from 'typeorm';
+import { PrismaService } from '../database/prisma.service';
 
 /**
- * Comprueba que el adaptador TypeORM ↔ MySQL está operativo (tras instalación).
+ * Comprueba que el adaptador Prisma ↔ MySQL está operativo (tras instalación).
  */
 @Controller('health')
 export class HealthController {
-  constructor(private readonly dataSource: DataSource) {}
+  constructor(private readonly prisma: PrismaService) {}
 
   @Public()
   @Get('database')
   async database() {
-    await this.dataSource.query('SELECT 1 AS ok');
-    const dbName = this.dataSource.options.database ?? null;
+    const rows = await this.prisma.$queryRaw<
+      Array<{ db: string | null }>
+    >`SELECT DATABASE() AS db`;
+    const dbName = rows[0]?.db ?? null;
     return {
       ok: true,
       driver: 'mysql',

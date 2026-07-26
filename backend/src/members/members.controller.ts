@@ -59,6 +59,7 @@ export class MembersController {
       role_name: req.user.role_name,
       page,
       pageSize,
+      q: query.q,
     });
   }
 

@@ -1,3 +1,4 @@
+import type { ValueTransformer } from 'typeorm';
 import {
   Column,
   Entity,
@@ -7,9 +8,19 @@ import {
 } from 'typeorm';
 import { GymMember } from './gym-member.entity';
 import {
-  mealsScheduleLongtextTransformer,
+  parseMealsScheduleJson,
+  stringifyMealsScheduleJson,
   type NutritionScheduleSlot,
 } from '../nutrition/schedule-json.util';
+
+const mealsScheduleLongtextTransformer: ValueTransformer = {
+  to: (v: NutritionScheduleSlot[] | null | undefined) =>
+    stringifyMealsScheduleJson(v),
+  from: (v: unknown) => {
+    const slots = parseMealsScheduleJson(v);
+    return slots.length ? slots : null;
+  },
+};
 
 @Entity({ name: 'nutrition_plan' })
 export class NutritionPlan {

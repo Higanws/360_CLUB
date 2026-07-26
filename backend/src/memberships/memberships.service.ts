@@ -3,10 +3,8 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { Membership } from '../entities/membership.entity';
-import { MembershipPayment } from '../entities/membership-payment.entity';
+import type { Membership } from '@prisma/client';
+import { PrismaService } from '../database/prisma.service';
 import { CreateMembershipDto } from './dto/create-membership.dto';
 import { UpdateMembershipDto } from './dto/update-membership.dto';
 
@@ -23,12 +21,7 @@ export type MembershipRow = {
 
 @Injectable()
 export class MembershipsService {
-  constructor(
-    @InjectRepository(Membership)
-    private readonly plans: Repository<Membership>,
-    @InjectRepository(MembershipPayment)
-    private readonly payments: Repository<MembershipPayment>,
-  ) {}
+  constructor(private readonly prisma: PrismaService) {}
 
   private toRow(m: Membership): MembershipRow {
     return {
@@ -44,7 +37,9 @@ export class MembershipsService {
   }
 
   async list(): Promise<{ title: string; subtitle: string; memberships: MembershipRow[] }> {
-    const rows = await this.plans.find({ order: { id: 'ASC' } });
+    const rows = await this.prisma.membership.findMany({
+      orderBy: { id: 'asc' },
+    });
     return {
       title: 'Lista de membresías',
       subtitle: 'Afiliación',
@@ -53,60 +48,65 @@ export class MembershipsService {
   }
 
   async findOne(id: number): Promise<MembershipRow> {
-    const m = await this.plans.findOne({ where: { id } });
+    const m = await this.prisma.membership.findUnique({ where: { id } });
     if (!m) throw new NotFoundException('Membresía no encontrada.');
     return this.toRow(m);
   }
 
   async create(dto: CreateMembershipDto): Promise<MembershipRow> {
-    const entity = this.plans.create({
-      membership_label: dto.membership_label.trim(),
-      membership_amount: dto.membership_amount,
-      membership_period_days: dto.membership_period_days ?? null,
-      installment_plan: dto.installment_plan?.trim() || null,
-      signup_fee: dto.signup_fee ?? null,
-      description: dto.description?.trim() || null,
-      image: dto.image?.trim() || null,
+    const saved = await this.prisma.membership.create({
+      data: {
+        membership_label: dto.membership_label.trim(),
+        membership_amount: dto.membership_amount,
+        membership_period_days: dto.membership_period_days ?? null,
+        installment_plan: dto.installment_plan?.trim() || null,
+        signup_fee: dto.signup_fee ?? null,
+        description: dto.description?.trim() || null,
+        image: dto.image?.trim() || null,
+      },
     });
-    const saved = await this.plans.save(entity);
     return this.toRow(saved);
   }
 
   async update(id: number, dto: UpdateMembershipDto): Promise<MembershipRow> {
-    const m = await this.plans.findOne({ where: { id } });
+    const m = await this.prisma.membership.findUnique({ where: { id } });
     if (!m) throw new NotFoundException('Membresía no encontrada.');
 
+    const data: Partial<Membership> = {};
     if (dto.membership_label !== undefined) {
-      m.membership_label = dto.membership_label.trim();
+      data.membership_label = dto.membership_label.trim();
     }
     if (dto.membership_amount !== undefined) {
-      m.membership_amount = dto.membership_amount;
+      data.membership_amount = dto.membership_amount;
     }
     if (dto.membership_period_days !== undefined) {
-      m.membership_period_days = dto.membership_period_days;
+      data.membership_period_days = dto.membership_period_days;
     }
     if (dto.installment_plan !== undefined) {
-      m.installment_plan = dto.installment_plan?.trim() || null;
+      data.installment_plan = dto.installment_plan?.trim() || null;
     }
     if (dto.signup_fee !== undefined) {
-      m.signup_fee = dto.signup_fee;
+      data.signup_fee = dto.signup_fee;
     }
     if (dto.description !== undefined) {
-      m.description = dto.description?.trim() || null;
+      data.description = dto.description?.trim() || null;
     }
     if (dto.image !== undefined) {
-      m.image = dto.image?.trim() || null;
+      data.image = dto.image?.trim() || null;
     }
 
-    const saved = await this.plans.save(m);
+    const saved = await this.prisma.membership.update({
+      where: { id },
+      data,
+    });
     return this.toRow(saved);
   }
 
   async remove(id: number): Promise<{ ok: true }> {
-    const m = await this.plans.findOne({ where: { id } });
+    const m = await this.prisma.membership.findUnique({ where: { id } });
     if (!m) throw new NotFoundException('Membresía no encontrada.');
 
-    const cnt = await this.payments.count({
+    const cnt = await this.prisma.membershipPayment.count({
       where: { membership_id: id },
     });
     if (cnt > 0) {
@@ -115,7 +115,7 @@ export class MembershipsService {
       );
     }
 
-    await this.plans.remove(m);
+    await this.prisma.membership.delete({ where: { id } });
     return { ok: true };
   }
 }

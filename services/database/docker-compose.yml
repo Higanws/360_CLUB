@@ -1,73 +1,82 @@
 # =============================================================================
-# Club360 — servicio de base de datos (independiente de API y frontend)
+# Club360 — capa de base de datos (un contenedor) + migrate one-shot
 #
-# Ubicación: services/database/
+# Contenedor `db`:
+#   - MariaDB (datos en volumen Docker)
+#   - Backups semanales (domingo 03:00 UTC) → ../../Backups en el host
 #
-# Incluye:
-#   - MariaDB con volumen persistente (datos sobreviven a `docker compose down`)
-#   - Job prisma-migrate: aplica migraciones en backend/prisma/migrations al subir el stack
+# Contenedor `prisma-migrate` (one-shot, no queda corriendo):
+#   - Aplica backend/prisma/migrations al subir el stack
 #
-# Uso (desde esta carpeta):
+# La app (API/frontend) corre FUERA de este compose (npm run api / npm run web)
+# o en deploy/ aparte.
+#
+# Uso:
 #   docker compose up -d
-#
-# Primera vez: MariaDB crea la BD vacía (MARIADB_DATABASE); el contenedor migrate
-# ejecuta `prisma migrate deploy` y crea las tablas. Siguientes arranques: migrate es idempotente.
-#
-# Conectar desde el host (backend/.env):
-#   DATABASE_HOST=127.0.0.1
-#   DATABASE_PORT=3306
-#   DATABASE_USER=root
-#   DATABASE_PASSWORD=root   (o el valor de MARIADB_ROOT_PASSWORD)
-#   DATABASE_NAME=club360
-#   DATABASE_URL=mysql://root:root@127.0.0.1:3306/club360
-#
-# Parar sin borrar datos:
-#   docker compose stop
-# Borrar contenedores pero conservar volumen:
-#   docker compose down
-# Borrar también los datos (¡cuidado!):
-#   docker compose down -v
+#   npm run db:backup          # dump inmediato → Backups/
 # =============================================================================
 
+name: club360-database
+
 services:
-  mariadb:
-    image: mariadb:11.4
-    container_name: club360-mariadb
+  db:
+    build:
+      context: ../..
+      dockerfile: services/database/Dockerfile.db
+    container_name: club360-db
+    hostname: mariadb
     environment:
       MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD:-root}
       MARIADB_DATABASE: ${MARIADB_DATABASE:-club360}
+      DB_HOST: 127.0.0.1
+      DB_PORT: 3306
+      DB_USER: root
+      DB_PASSWORD: ${MARIADB_ROOT_PASSWORD:-root}
+      DB_NAME: ${MARIADB_DATABASE:-club360}
+      BACKUP_DIR: /backups
+      RETENTION_COUNT: ${BACKUP_RETENTION_COUNT:-8}
+      BACKUPS_ENABLED: ${BACKUPS_ENABLED:-true}
     ports:
       - '${DB_PORT:-3306}:3306'
     volumes:
       - club360_mariadb_data:/var/lib/mysql
-    command:
-      [
-        '--character-set-server=utf8mb4',
-        '--collation-server=utf8mb4_unicode_ci',
-      ]
+      # Dumps fuera de Docker → raíz del repo
+      - ../../Backups:/backups
     healthcheck:
       test:
         [
           'CMD-SHELL',
-          'mariadb-admin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD || exit 1',
+          'mariadb-admin ping -h 127.0.0.1 -uroot -p"$$MARIADB_ROOT_PASSWORD" || exit 1',
         ]
       interval: 5s
       timeout: 5s
       retries: 30
       start_period: 40s
+    networks:
+      club360-db:
+        aliases:
+          - mariadb
+    restart: unless-stopped
 
+  # One-shot: aplica migraciones Prisma y sale (no es un servicio permanente)
   prisma-migrate:
     build:
       context: ../..
       dockerfile: services/database/Dockerfile.migrate
     container_name: club360-prisma-migrate
     environment:
-      DATABASE_URL: mysql://root:${MARIADB_ROOT_PASSWORD:-root}@mariadb:3306/${MARIADB_DATABASE:-club360}
+      DATABASE_URL: mysql://root:${MARIADB_ROOT_PASSWORD:-root}@db:3306/${MARIADB_DATABASE:-club360}
     depends_on:
-      mariadb:
+      db:
         condition: service_healthy
     restart: 'no'
+    networks:
+      - club360-db
 
 volumes:
   club360_mariadb_data:
     name: club360_mariadb_data
+
+networks:
+  club360-db:
+    name: club360-db

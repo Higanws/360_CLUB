@@ -30,9 +30,13 @@ export type MembersListApiPayload = {
 export async function fetchMembersListPage(
   page: number,
   pageSize: number,
+  q?: string,
 ): Promise<MembersListApiPayload> {
+  const params: Record<string, string | number> = { page, pageSize };
+  const qTrim = q?.trim();
+  if (qTrim) params.q = qTrim;
   const { data } = await api.get<MembersListApiPayload>('/members', {
-    params: { page, pageSize },
+    params,
   });
   return data;
 }
