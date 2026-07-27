@@ -3,31 +3,42 @@
 # Uso en el servidor:
 #   ./deploy/vps-deploy.sh v1.0.0
 #   ./deploy/vps-deploy.sh main
+#
+# Nota: tras el checkout se re-ejecuta este script (CLUB360_DEPLOY_PHASE=build)
+# para usar la versión del ref desplegado (evita fallos cuando cambia compose/servicios).
 set -euo pipefail
 
 REPO_DIR="${CLUB360_REPO_DIR:-/opt/360_CLUB}"
 REF="${1:-main}"
 COMPOSE_DIR="${REPO_DIR}/deploy"
+PHASE="${CLUB360_DEPLOY_PHASE:-checkout}"
 
 if [[ ! -d "${REPO_DIR}/.git" ]]; then
   echo "No existe repo en ${REPO_DIR}. Cloná primero: git clone https://github.com/Higanws/360_CLUB.git ${REPO_DIR}"
   exit 1
 fi
 
-cd "${REPO_DIR}"
-git fetch --tags origin
-if git rev-parse --verify "origin/${REF}" >/dev/null 2>&1; then
-  git checkout -B "${REF}" "origin/${REF}"
-elif git rev-parse --verify "${REF}" >/dev/null 2>&1; then
-  git checkout "${REF}"
-else
-  echo "Ref no encontrada: ${REF}"
-  exit 1
+if [[ "${PHASE}" == "checkout" ]]; then
+  cd "${REPO_DIR}"
+  git fetch --tags origin
+  if git rev-parse --verify "origin/${REF}" >/dev/null 2>&1; then
+    git checkout -B "${REF}" "origin/${REF}"
+  elif git rev-parse --verify "${REF}" >/dev/null 2>&1; then
+    git checkout "${REF}"
+  else
+    echo "Ref no encontrada: ${REF}"
+    exit 1
+  fi
+
+  echo "${REF}" > "${REPO_DIR}/VERSION"
+  echo "$(git rev-parse --short HEAD)" >> "${REPO_DIR}/VERSION"
+
+  chmod +x "${COMPOSE_DIR}/vps-deploy.sh"
+  exec env CLUB360_DEPLOY_PHASE=build CLUB360_REPO_DIR="${REPO_DIR}" \
+    "${COMPOSE_DIR}/vps-deploy.sh" "${REF}"
 fi
 
-echo "${REF}" > "${REPO_DIR}/VERSION"
-echo "$(git rev-parse --short HEAD)" >> "${REPO_DIR}/VERSION"
-
+# --- phase: build (script ya es el del ref desplegado) ---
 cd "${COMPOSE_DIR}"
 export VITE_APP_VERSION="${REF}"
 docker compose down --remove-orphans 2>/dev/null || true
