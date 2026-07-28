@@ -8,7 +8,7 @@ Resumen mínimo:
 
 - Nunca commitear ni pushear a `main`; usar rama `feature|fix|chore/…`, publicar y avisar al usuario para el merge.
 - Esquema y runtime de BD: **Prisma** (`migrate` + `PrismaService`).
-- Backups: contenedor `club360-db` + `Backups/` en el host + API `/api/admin/backups/*`.
+- Backups: contenedor `club360-db` + `/opt/backup` en el host + API `/api/admin/backups/*`.
 - Verificar con `npm run build` y `npm test` antes de pushear.
 
 ---

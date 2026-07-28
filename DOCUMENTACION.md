@@ -157,7 +157,7 @@ Primera instalación alternativa: wizard en http://localhost:5173 (sin marcadore
 
 - MariaDB (datos en volumen Docker)
 - supercronic: backup **domingo 03:00 UTC**, retención **8** dumps
-- Bind mount → **`Backups/` en la raíz del repo** (fuera del contenedor)
+- Bind mount → **`/opt/backup` en el VPS** (fuera del repo y fuera del contenedor)
 - Job one-shot `prisma-migrate` al hacer `up` (no queda corriendo)
 
 ### API de backups (solo `administrator`)
@@ -167,7 +167,7 @@ Durante backup/restore: Prisma se desconecta, MariaDB pasa a `read_only`, el res
 | Método | Ruta | Efecto |
 |--------|------|--------|
 | `GET` | `/api/admin/backups/status` | Estado de mantenimiento |
-| `GET` | `/api/admin/backups` | Lista archivos en `Backups/` |
+| `GET` | `/api/admin/backups` | Lista archivos en `BACKUP_DIR` (en VPS: `/opt/backup`) |
 | `POST` | `/api/admin/backups` | Generar dump |
 | `POST` | `/api/admin/backups/restore` | Multipart `file` o `{ "filename": "club360_….sql.gz" }` |
 

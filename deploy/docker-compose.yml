@@ -13,7 +13,7 @@
 name: club360
 
 services:
-  # Contenedor único de BD: MariaDB + backups semanales → ../Backups (host)
+  # Contenedor único de BD: MariaDB + backups semanales → /opt/backup (host)
   db:
     build:
       context: ..
@@ -34,7 +34,7 @@ services:
       BACKUPS_ENABLED: ${BACKUPS_ENABLED:-true}
     volumes:
       - club360_mariadb_data:/var/lib/mysql
-      - ../Backups:/backups
+      - ${BACKUPS_HOST_DIR:-/opt/backup}:/backups
     healthcheck:
       test:
         [
@@ -72,8 +72,10 @@ services:
       REDIS_URL: ${REDIS_URL:-redis://redis:6379}
       CLUB360_AUTO_INSTALL: ${CLUB360_AUTO_INSTALL:-0}
       CLUB360_DOCKER: "1"
+      BACKUP_DIR: /backups
     volumes:
       - club360_backend_data:/app/data
+      - ${BACKUPS_HOST_DIR:-/opt/backup}:/backups
     depends_on:
       db:
         condition: service_healthy
