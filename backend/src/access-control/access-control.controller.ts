@@ -1,7 +1,11 @@
 import { Body, Controller, Get, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { BusinessRoleGuard } from '../members/business-role.guard';
 import { BusinessRoles } from '../members/roles.decorator';
-import { AdministratorRoleGuard } from '../staff/administrator-role.guard';
+import {
+  RequireStaffSpecs,
+  StaffSpecializationGuard,
+} from '../shared/application/security/staff-specialization.guard';
+import { STAFF_SPEC } from '../shared/application/security/staff-specialization';
 import { CheckAccessDto } from './dto/check-access.dto';
 import { RecentAccessLogsQueryDto } from './dto/recent-access-logs-query.dto';
 import { AccessControlService } from './access-control.service';
@@ -9,7 +13,8 @@ import { AccessControlService } from './access-control.service';
 type JwtReq = { user: { userId: number; role_name: string } };
 
 @Controller('access-control')
-@UseGuards(BusinessRoleGuard, AdministratorRoleGuard)
+@UseGuards(BusinessRoleGuard, StaffSpecializationGuard)
+@RequireStaffSpecs(STAFF_SPEC.CAJERO)
 @BusinessRoles()
 export class AccessControlController {
   constructor(private readonly access: AccessControlService) {}

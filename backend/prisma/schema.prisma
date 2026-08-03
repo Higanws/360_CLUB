@@ -52,13 +52,6 @@ model Membership {
   @@map("membership")
 }
 
-model ClassSchedule {
-  id         Int     @id @default(autoincrement())
-  class_name String? @db.VarChar(100)
-
-  @@map("class_schedule")
-}
-
 model GymMember {
   id                   Int       @id @default(autoincrement())
   activated            Int?
@@ -98,6 +91,11 @@ model GymMember {
   created_by           Int?
   created_date         DateTime? @db.Date
 
+  /** 1 = ve dieta general del club (fuente única compartida). */
+  subscribe_nutrition_general Int @default(1) @db.TinyInt
+  /** 1 = ve rutina(s) general(es) publicadas del club. */
+  subscribe_training_general  Int @default(1) @db.TinyInt
+
   physical_weight_kg   Decimal?  @db.Decimal(10, 2)
   physical_height_cm   Decimal?  @db.Decimal(10, 2)
   physical_chest_cm    Decimal?  @db.Decimal(10, 2)
@@ -119,16 +117,6 @@ model GymMember {
   @@index([first_name, last_name], map: "idx_gym_member_name")
   @@index([username], map: "idx_gym_member_username")
   @@map("gym_member")
-}
-
-model GymMemberClass {
-  id          Int  @id @default(autoincrement())
-  member_id   Int?
-  assign_class Int?
-
-  @@index([member_id], map: "idx_gym_member_class_member")
-  @@index([assign_class], map: "idx_gym_member_class_assign")
-  @@map("gym_member_class")
 }
 
 model MembershipPayment {
@@ -244,10 +232,13 @@ model TrainingRoutine {
   title            String    @db.VarChar(200)
   description      String?   @db.Text
   difficulty_level String    @default("media") @db.VarChar(20)
+  /** 1 = rutina general publicada (la ven todos los socios suscritos a general). */
+  is_general       Int       @default(0) @db.TinyInt
   created_at       DateTime? @default(now()) @db.DateTime(0)
   lines            TrainingRoutineActivity[]
   assignments      TrainingAssignment[]
 
+  @@index([is_general], map: "idx_training_routine_general")
   @@map("training_routine")
 }
 
@@ -304,6 +295,7 @@ model TrainingAssignmentTrainer {
   @@map("training_assignment_trainer")
 }
 
+/** Dieta personal (asignación única por socio). */
 model NutritionPlan {
   id                   Int       @id @default(autoincrement())
   member_id            Int       @unique
@@ -314,6 +306,21 @@ model NutritionPlan {
   created_at           DateTime? @default(now()) @db.DateTime(0)
 
   @@map("nutrition_plan")
+}
+
+/** Dieta general del club (fuente única; editar afecta a todos los suscritos). */
+model NutritionPlanGeneral {
+  id                   Int       @id @default(autoincrement())
+  title                String    @default("Dieta general") @db.VarChar(200)
+  is_published         Int       @default(1) @db.TinyInt
+  valid_from           DateTime? @db.Date
+  valid_to             DateTime? @db.Date
+  meals_schedule_json  String?   @db.LongText
+  created_at           DateTime? @default(now()) @db.DateTime(0)
+  updated_at           DateTime? @default(now()) @updatedAt @db.DateTime(0)
+
+  @@index([is_published], map: "idx_nutrition_plan_general_published")
+  @@map("nutrition_plan_general")
 }
 
 model MemberWeeklyRoutine {

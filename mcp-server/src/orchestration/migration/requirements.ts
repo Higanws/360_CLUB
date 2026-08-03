@@ -218,7 +218,16 @@ export const ENTITY_REQUIREMENTS: Record<
       { name: 'membership_valid_from', type: 'YYYY-MM-DD', required: false },
       { name: 'membership_valid_to', type: 'YYYY-MM-DD', required: false },
       { name: 'activated', type: '0 | 1', required: false },
-      { name: 'assign_class_ids', type: 'integer[]', required: false },
+      {
+        name: 'subscribe_nutrition_general',
+        type: 'boolean',
+        required: false,
+      },
+      {
+        name: 'subscribe_training_general',
+        type: 'boolean',
+        required: false,
+      },
       { name: 'physical_*', type: 'medidas corporales', required: false },
     ],
     batch_notes: [

@@ -81,7 +81,8 @@ export type SafeMemberDetail = {
   trial_end_date: string | null;
   first_pay_date: string | null;
   created_date: string | null;
-  assign_class_ids: number[];
+  subscribe_nutrition_general: boolean;
+  subscribe_training_general: boolean;
   physical_weight_kg: number | null;
   physical_height_cm: number | null;
   physical_chest_cm: number | null;
@@ -198,10 +199,7 @@ export class MembersService {
     }
   }
 
-  private toSafeDetail(
-    m: GymMember,
-    assign_class_ids: number[],
-  ): SafeMemberDetail {
+  private toSafeDetail(m: GymMember): SafeMemberDetail {
     return {
       id: m.id,
       activated: m.activated,
@@ -230,7 +228,8 @@ export class MembersService {
       trial_end_date: toIsoDateOnly(m.trial_end_date),
       first_pay_date: toIsoDateOnly(m.first_pay_date),
       created_date: toIsoDateOnly(m.created_date),
-      assign_class_ids,
+      subscribe_nutrition_general: (m.subscribe_nutrition_general ?? 1) === 1,
+      subscribe_training_general: (m.subscribe_training_general ?? 1) === 1,
       physical_weight_kg: numFromDecColumn(m.physical_weight_kg),
       physical_height_cm: numFromDecColumn(m.physical_height_cm),
       physical_chest_cm: numFromDecColumn(m.physical_chest_cm),
@@ -412,10 +411,6 @@ export class MembersService {
       orderBy: { first_name: 'asc' },
     });
 
-    const classes = await this.prisma.classSchedule.findMany({
-      orderBy: { class_name: 'asc' },
-    });
-
     const plans = await this.prisma.membership.findMany({
       orderBy: { membership_label: 'asc' },
     });
@@ -424,10 +419,6 @@ export class MembersService {
       staff: staffRows.map((s) => ({
         id: s.id,
         label: [s.first_name, s.last_name].filter(Boolean).join(' ').trim(),
-      })),
-      classes: classes.map((c) => ({
-        id: c.id,
-        class_name: c.class_name,
       })),
       memberships: plans.map((p) => ({
         id: p.id,
@@ -447,14 +438,7 @@ export class MembersService {
       throw new NotFoundException('Socio no encontrado.');
     }
     await this.assertCanManageMember(actor, m);
-    const cls = await this.prisma.gymMemberClass.findMany({
-      where: { member_id: id },
-      orderBy: { id: 'asc' },
-    });
-    const ids = cls
-      .map((c) => c.assign_class)
-      .filter((x): x is number => x != null);
-    return { member: this.toSafeDetail(m, ids) };
+    return { member: this.toSafeDetail(m) };
   }
 
   async create(
@@ -514,6 +498,8 @@ export class MembersService {
         physical_thigh_cm: parseDecimalDto(dto.physical_thigh_cm),
         physical_arms_cm: parseDecimalDto(dto.physical_arms_cm),
         physical_fat_percent: parseDecimalDto(dto.physical_fat_percent),
+        subscribe_nutrition_general: dto.subscribe_nutrition_general === false ? 0 : 1,
+        subscribe_training_general: dto.subscribe_training_general === false ? 0 : 1,
       },
     });
 
@@ -523,7 +509,6 @@ export class MembersService {
       data: { member_id },
     });
 
-    await this.replaceClassAssignments(saved.id, dto.assign_class_ids ?? []);
     await this.insertMembershipPaymentIfNeeded(
       saved.id,
       dto.selected_membership,
@@ -537,28 +522,7 @@ export class MembersService {
       where: { id: saved.id },
     });
     if (!fresh) throw new NotFoundException();
-    const cls = await this.prisma.gymMemberClass.findMany({
-      where: { member_id: saved.id },
-    });
-    const ids = cls
-      .map((c) => c.assign_class)
-      .filter((x): x is number => x != null);
-    return { member: this.toSafeDetail(fresh, ids) };
-  }
-
-  private async replaceClassAssignments(
-    memberId: number,
-    classIds: number[],
-  ): Promise<void> {
-    await this.prisma.gymMemberClass.deleteMany({
-      where: { member_id: memberId },
-    });
-    const uniq = [...new Set(classIds)].filter((id) => id > 0);
-    for (const assign_class of uniq) {
-      await this.prisma.gymMemberClass.create({
-        data: { member_id: memberId, assign_class },
-      });
-    }
+    return { member: this.toSafeDetail(fresh) };
   }
 
   private async insertMembershipPaymentIfNeeded(
@@ -670,22 +634,16 @@ export class MembersService {
       data.physical_arms_cm = parseDecimalDto(dto.physical_arms_cm);
     if (dto.physical_fat_percent !== undefined)
       data.physical_fat_percent = parseDecimalDto(dto.physical_fat_percent);
+    if (dto.subscribe_nutrition_general !== undefined)
+      data.subscribe_nutrition_general = dto.subscribe_nutrition_general ? 1 : 0;
+    if (dto.subscribe_training_general !== undefined)
+      data.subscribe_training_general = dto.subscribe_training_general ? 1 : 0;
 
     await this.prisma.gymMember.update({ where: { id }, data });
 
-    if (dto.assign_class_ids !== undefined) {
-      await this.replaceClassAssignments(id, dto.assign_class_ids);
-    }
-
     const fresh = await this.prisma.gymMember.findUnique({ where: { id } });
     if (!fresh) throw new NotFoundException();
-    const cls = await this.prisma.gymMemberClass.findMany({
-      where: { member_id: id },
-    });
-    const ids = cls
-      .map((c) => c.assign_class)
-      .filter((x): x is number => x != null);
-    return { member: this.toSafeDetail(fresh, ids) };
+    return { member: this.toSafeDetail(fresh) };
   }
 
   async remove(
@@ -699,7 +657,6 @@ export class MembersService {
     }
     await this.assertCanManageMember(actor, m);
 
-    await this.prisma.gymMemberClass.deleteMany({ where: { member_id: id } });
     await this.prisma.membershipPayment.deleteMany({
       where: { member_id: id },
     });

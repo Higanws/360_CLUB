@@ -1,6 +1,7 @@
 import { BadRequestException } from '@nestjs/common';
 import { PosSalesService } from '../../../src/pos/pos-sales.service';
 import { DashboardCacheService } from '../../../src/shared/cache/dashboard-cache.service';
+import type { PrismaService } from '../../../src/database/prisma.service';
 
 describe('pos / PosSalesService paginación', () => {
   const dashboardCache = {
@@ -8,27 +9,15 @@ describe('pos / PosSalesService paginación', () => {
   } as unknown as DashboardCacheService;
 
   function makeService(rawRows: Array<Record<string, unknown>>, total: number) {
-    const qb = {
-      select: jest.fn().mockReturnThis(),
-      addSelect: jest.fn().mockReturnThis(),
-      leftJoin: jest.fn().mockReturnThis(),
-      where: jest.fn().mockReturnThis(),
-      andWhere: jest.fn().mockReturnThis(),
-      orderBy: jest.fn().mockReturnThis(),
-      clone: jest.fn().mockReturnThis(),
-      getCount: jest.fn().mockResolvedValue(total),
-      offset: jest.fn().mockReturnThis(),
-      limit: jest.fn().mockReturnThis(),
-      getRawMany: jest.fn().mockResolvedValue(rawRows),
-    };
-    const dataSource = {
-      getRepository: jest.fn().mockReturnValue({
-        createQueryBuilder: jest.fn().mockReturnValue(qb),
-      }),
-    };
+    const prisma = {
+      posSale: {
+        count: jest.fn().mockResolvedValue(total),
+      },
+      $queryRaw: jest.fn().mockResolvedValue(rawRows),
+    } as unknown as PrismaService;
     return {
-      service: new PosSalesService(dataSource as never, dashboardCache),
-      qb,
+      service: new PosSalesService(prisma, dashboardCache),
+      prisma,
     };
   }
 

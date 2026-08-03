@@ -14,6 +14,11 @@ import {
 import { AuthGuard } from '@nestjs/passport';
 import { BusinessRoleGuard } from '../members/business-role.guard';
 import { BusinessRoles } from '../members/roles.decorator';
+import {
+  RequireStaffSpecs,
+  StaffSpecializationGuard,
+} from '../shared/application/security/staff-specialization.guard';
+import { STAFF_SPEC } from '../shared/application/security/staff-specialization';
 import { PaginationQueryDto } from '../shared/dto/pagination-query.dto';
 import { ActivitiesService } from './activities.service';
 import { CreateActivityCategoryDto } from './dto/create-activity-category.dto';
@@ -23,7 +28,8 @@ import { UpdateActivityDto } from './dto/update-activity.dto';
 type JwtReq = { user: { userId: number; role_name: string } };
 
 @Controller('activities')
-@UseGuards(AuthGuard('jwt'), BusinessRoleGuard)
+@UseGuards(AuthGuard('jwt'), BusinessRoleGuard, StaffSpecializationGuard)
+@RequireStaffSpecs(STAFF_SPEC.ENTRENADOR)
 @BusinessRoles()
 export class ActivitiesController {
   constructor(private readonly activities: ActivitiesService) {}

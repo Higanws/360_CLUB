@@ -12,6 +12,8 @@ import type { GymMember } from '@prisma/client';
 import { PrismaService } from '../database/prisma.service';
 import { LoginDto } from './dto/login.dto';
 import { toUserProfileDto, type UserProfileDto } from './user-profile';
+import { loadStaffSpecializationNames } from '../shared/application/security/staff-specialization';
+import { normalizeClubRole } from '../shared/domain/club/club-roles';
 
 export type SafeUser = Omit<GymMember, 'password'>;
 
@@ -125,8 +127,20 @@ export class AuthService {
     const tokens = await this.issueTokens(member);
     return {
       ...tokens,
-      user: toUserProfileDto(member),
+      user: await this.profileForMember(member),
     };
+  }
+
+  private async profileForMember(member: GymMember): Promise<UserProfileDto> {
+    const role = normalizeClubRole(member.role_name);
+    if (role !== 'staff_member' && role !== 'administrator') {
+      return toUserProfileDto(member, []);
+    }
+    const { labeled } = await loadStaffSpecializationNames(
+      this.prisma,
+      member.id,
+    );
+    return toUserProfileDto(member, labeled);
   }
 
   async issueTokens(member: GymMember) {
@@ -204,6 +218,6 @@ export class AuthService {
       throw new UnauthorizedException();
     }
     this.assertMemberMayLogin(member);
-    return toUserProfileDto(member);
+    return this.profileForMember(member);
   }
 }

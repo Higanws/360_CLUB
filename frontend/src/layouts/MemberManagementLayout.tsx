@@ -18,6 +18,7 @@ import {
   isBusinessUser,
   isStaff,
   staffDefaultRoute,
+  staffHasModule,
 } from '../lib/role-access';
 
 const NAV_COLLAPSE_KEY = 'mm_nav_collapsed';
@@ -66,6 +67,30 @@ export function MemberManagementLayout() {
   const isBusiness = isBusinessUser(r);
   const isAdmin = isAdministrator(r);
   const isStaffUser = isStaff(r);
+
+  const staffSpecs = useMemo(
+    () => user?.specializations ?? [],
+    [user?.specializations],
+  );
+
+  const showStaffSocios =
+    isAdmin || (isStaffUser && staffHasModule(staffSpecs, '/gestion/socios'));
+  const showStaffPosFull =
+    isAdmin || (isStaffUser && staffHasModule(staffSpecs, '/gestion/punto-venta'));
+  const showStaffPosStockOnly =
+    isStaffUser &&
+    staffHasModule(staffSpecs, '/gestion/punto-venta/stock') &&
+    !staffHasModule(staffSpecs, '/gestion/punto-venta');
+  const showStaffPosSection = isAdmin || showStaffPosFull || showStaffPosStockOnly;
+  const showStaffAccessControl =
+    isAdmin ||
+    (isStaffUser && staffHasModule(staffSpecs, '/gestion/control-acceso'));
+  const showStaffEjercicios =
+    isAdmin || (isStaffUser && staffHasModule(staffSpecs, '/gestion/ejercicios'));
+  const showStaffRutinas =
+    isAdmin || (isStaffUser && staffHasModule(staffSpecs, '/gestion/rutinas'));
+  const showStaffNutricion =
+    isAdmin || (isStaffUser && staffHasModule(staffSpecs, '/gestion/nutricion'));
 
   const uploadBase = import.meta.env.VITE_UPLOAD_BASE as string | undefined;
 
@@ -132,10 +157,10 @@ export function MemberManagementLayout() {
       navigate(memberPortalRoutes.wellness, { replace: true });
       return;
     }
-    if (isStaffUser && !canStaffAccessGestionPath(location.pathname)) {
-      navigate(staffDefaultRoute(), { replace: true });
+    if (isStaffUser && !canStaffAccessGestionPath(location.pathname, staffSpecs)) {
+      navigate(staffDefaultRoute(staffSpecs), { replace: true });
     }
-  }, [loading, user, isBusiness, isStaffUser, location.pathname, navigate]);
+  }, [loading, user, isBusiness, isStaffUser, location.pathname, navigate, staffSpecs]);
 
   if (loading) {
     return (
@@ -220,7 +245,7 @@ export function MemberManagementLayout() {
               </NavLink>
             ) : (
               <NavLink
-                to={routes.rutinasAsignaciones}
+                to={staffDefaultRoute(staffSpecs)}
                 className={({ isActive }) =>
                   isActive
                     ? 'mm-sidebar-flat-link mm-sidebar-flat-link--active'
@@ -228,9 +253,23 @@ export function MemberManagementLayout() {
                 }
                 end
               >
-                <span className="mm-sidebar-flat-link-label">Mis asignaciones</span>
+                <span className="mm-sidebar-flat-link-label">Inicio gestión</span>
               </NavLink>
             )}
+
+            {isStaffUser && showStaffSocios && !isAdmin ? (
+              <NavLink
+                to={routes.socios}
+                className={({ isActive }) =>
+                  isActive ||
+                  location.pathname.startsWith(`${routes.socios}/`)
+                    ? 'mm-sidebar-flat-link mm-sidebar-flat-link--active'
+                    : 'mm-sidebar-flat-link'
+                }
+              >
+                <span className="mm-sidebar-flat-link-label">Miembros</span>
+              </NavLink>
+            ) : null}
 
             {isAdmin ? (
             <>
@@ -417,9 +456,92 @@ export function MemberManagementLayout() {
             </div>
             </>
             ) : null}
+
+            {showStaffPosSection && !isAdmin ? (
+            <div className="mm-sidebar-section mm-sidebar-section--pos">
+              <button
+                type="button"
+                className="mm-sidebar-toggle mm-ui-menu-control"
+                aria-expanded={posOpen}
+                aria-controls={posNavPanelId}
+                id={`${posNavPanelId}-label`}
+                onClick={() => setPosOpen((v) => !v)}
+              >
+                <span className="mm-sidebar-toggle-label">Venta y Stock</span>
+                <span
+                  className={
+                    posOpen
+                      ? 'mm-sidebar-chevron mm-sidebar-chevron--open'
+                      : 'mm-sidebar-chevron'
+                  }
+                  aria-hidden
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                    <path
+                      d="M6 9l6 6 6-6"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </span>
+              </button>
+              {posOpen ? (
+                <nav
+                  className="mm-nav mm-nav--nested"
+                  id={posNavPanelId}
+                  role="navigation"
+                  aria-labelledby={`${posNavPanelId}-label`}
+                >
+                  {showStaffPosFull ? (
+                    <>
+                      <NavLink
+                        to={routes.puntoVentaVender}
+                        className={({ isActive }) =>
+                          isActive
+                            ? 'mm-nav-link mm-nav-link--sublink mm-nav-link--active'
+                            : 'mm-nav-link mm-nav-link--sublink'
+                        }
+                      >
+                        <span className="mm-nav-bullet" aria-hidden />
+                        Vender un producto
+                      </NavLink>
+                      <NavLink
+                        to={routes.puntoVentaVentas}
+                        className={({ isActive }) =>
+                          isActive
+                            ? 'mm-nav-link mm-nav-link--sublink mm-nav-link--active'
+                            : 'mm-nav-link mm-nav-link--sublink'
+                        }
+                      >
+                        <span className="mm-nav-bullet" aria-hidden />
+                        Registro de ventas
+                      </NavLink>
+                    </>
+                  ) : null}
+                  {(showStaffPosFull || showStaffPosStockOnly) ? (
+                    <NavLink
+                      to={routes.puntoVentaStock}
+                      className={({ isActive }) =>
+                        isActive
+                          ? 'mm-nav-link mm-nav-link--sublink mm-nav-link--active'
+                          : 'mm-nav-link mm-nav-link--sublink'
+                      }
+                    >
+                      <span className="mm-nav-bullet" aria-hidden />
+                      Control stock
+                    </NavLink>
+                  ) : null}
+                </nav>
+              ) : null}
+            </div>
+            ) : null}
           </div>
 
+          {(showStaffEjercicios || showStaffRutinas || showStaffNutricion) ? (
           <div className="mm-sidebar-block">
+            {showStaffEjercicios ? (
             <div className="mm-sidebar-section mm-sidebar-section--activities">
               <button
                 type="button"
@@ -490,7 +612,9 @@ export function MemberManagementLayout() {
                 </nav>
               ) : null}
             </div>
+            ) : null}
 
+            {showStaffRutinas ? (
             <div className="mm-sidebar-section mm-sidebar-section--training">
               <button
                 type="button"
@@ -568,7 +692,9 @@ export function MemberManagementLayout() {
                 </nav>
               ) : null}
             </div>
+            ) : null}
 
+            {showStaffNutricion ? (
             <div className="mm-sidebar-section mm-sidebar-section--nutrition">
               <button
                 type="button"
@@ -614,6 +740,17 @@ export function MemberManagementLayout() {
                   aria-labelledby={`${nutritionNavPanelId}-label`}
                 >
                   <NavLink
+                    to={routes.nutricionGeneral}
+                    className={({ isActive }) =>
+                      isActive
+                        ? 'mm-nav-link mm-nav-link--sublink mm-nav-link--active'
+                        : 'mm-nav-link mm-nav-link--sublink'
+                    }
+                  >
+                    <span className="mm-nav-bullet" aria-hidden />
+                    Dieta general
+                  </NavLink>
+                  <NavLink
                     to={routes.nutricion}
                     end
                     className={({ isActive }) =>
@@ -628,9 +765,11 @@ export function MemberManagementLayout() {
                 </nav>
               ) : null}
             </div>
+            ) : null}
           </div>
+          ) : null}
 
-          {isAdmin ? (
+          {(isAdmin || showStaffAccessControl) ? (
           <div className="mm-sidebar-block">
             <div className="mm-sidebar-section mm-sidebar-section--access-control">
               <button

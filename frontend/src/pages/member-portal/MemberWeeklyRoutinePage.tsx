@@ -10,6 +10,7 @@ import { isPortalPreviewRole } from '../../lib/member-wellness-params';
 
 const DAY_KEYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'] as const;
 type DayKey = (typeof DAY_KEYS)[number];
+type RoutineSectionKey = 'general' | 'personal';
 
 const DAY_LABELS: Record<DayKey, string> = {
   mon: 'Lunes',
@@ -34,15 +35,18 @@ type TrainingLine = {
   videos: { id: number; url: string; sort_order: number }[];
 };
 
+type RoutineBlock = {
+  id: number;
+  routine_id: number;
+  routine_title: string;
+  created_at: string;
+  lines: TrainingLine[];
+};
+
 type TrainingContext = {
   week_start_default: string;
-  assignment: null | {
-    id: number;
-    routine_id: number;
-    routine_title: string;
-    created_at: string;
-    lines: TrainingLine[];
-  };
+  general: RoutineBlock | null;
+  personal: RoutineBlock | null;
 };
 
 type WeekRow = {
@@ -65,18 +69,15 @@ function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v);
 }
 
-function buildDefaultSnapshot(ctx: TrainingContext): Record<string, unknown> {
+function buildDaysFromBlock(block: RoutineBlock | null): Record<DayKey, WeekRow[]> {
   const days: Record<string, WeekRow[]> = {};
   for (const k of DAY_KEYS) days[k] = [];
-  const a = ctx.assignment;
-  if (!a) {
-    return { days, routineTitle: '', assignmentId: null };
-  }
-  for (const line of a.lines) {
+  if (!block) return days as Record<DayKey, WeekRow[]>;
+  for (const line of block.lines) {
     for (let i = 0; i < 7; i++) {
       if ((line.weekdays_mask & (1 << i)) !== 0) {
         const key = DAY_KEYS[i];
-        days[key].push({
+        days[key]!.push({
           routine_line_id: line.id,
           activity_id: line.activity_id,
           title: line.title,
@@ -85,11 +86,7 @@ function buildDefaultSnapshot(ctx: TrainingContext): Record<string, unknown> {
       }
     }
   }
-  return {
-    days,
-    routineTitle: a.routine_title,
-    assignmentId: a.id,
-  };
+  return days as Record<DayKey, WeekRow[]>;
 }
 
 function parseDays(snap: Record<string, unknown>): Record<DayKey, WeekRow[]> {
@@ -129,6 +126,19 @@ function parseDays(snap: Record<string, unknown>): Record<DayKey, WeekRow[]> {
   return out;
 }
 
+function lineMapFromBlock(block: RoutineBlock | null): Map<number, TrainingLine> {
+  const m = new Map<number, TrainingLine>();
+  if (!block) return m;
+  for (const line of block.lines) {
+    m.set(line.id, line);
+  }
+  return m;
+}
+
+function hasExercises(days: Record<DayKey, WeekRow[]>): boolean {
+  return DAY_KEYS.some((k) => (days[k] ?? []).length > 0);
+}
+
 function modalExercisesForDay(
   rows: WeekRow[],
   lineByRoutineId: Map<number, TrainingLine>,
@@ -157,6 +167,165 @@ function modalExercisesForDay(
   });
 }
 
+type RoutineWeekSectionProps = {
+  sectionKey: RoutineSectionKey;
+  label: string;
+  routineTitle: string;
+  daysState: Record<DayKey, WeekRow[]>;
+  lineByRoutineId: Map<number, TrainingLine>;
+  selected: { section: RoutineSectionKey; day: DayKey } | null;
+  onSelectDay: (section: RoutineSectionKey, day: DayKey | null) => void;
+};
+
+function RoutineWeekSection({
+  sectionKey,
+  label,
+  routineTitle,
+  daysState,
+  lineByRoutineId,
+  selected,
+  onSelectDay,
+}: RoutineWeekSectionProps) {
+  if (!hasExercises(daysState)) return null;
+
+  const modalDay =
+    selected?.section === sectionKey ? selected.day : null;
+
+  return (
+    <div className="mp-wellness-plan-block">
+      <h3 className="mp-wellness-section-subtitle">
+        {label} · <span className="muted">{routineTitle}</span>
+      </h3>
+      <div className="mp-routine-week">
+        {DAY_KEYS.map((day) => {
+          const dayRows = daysState[day] ?? [];
+          const hasRows = dayRows.length > 0;
+          return (
+            <div
+              key={`${sectionKey}-${day}`}
+              className={
+                hasRows
+                  ? 'mp-routine-day mp-routine-day--clickable'
+                  : 'mp-routine-day'
+              }
+              role={hasRows ? 'button' : undefined}
+              tabIndex={hasRows ? 0 : undefined}
+              aria-label={
+                hasRows
+                  ? `${DAY_LABELS[day]}: abrir detalle con ${dayRows.length} ejercicio(s)`
+                  : undefined
+              }
+              onClick={() => {
+                if (hasRows) onSelectDay(sectionKey, day);
+              }}
+              onKeyDown={(e) => {
+                if (!hasRows) return;
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  onSelectDay(sectionKey, day);
+                }
+              }}
+            >
+              <h3 className="mp-routine-day-title">{DAY_LABELS[day]}</h3>
+              <ul className="mp-routine-list">
+                {dayRows.map((row, idx) => (
+                  <li
+                    key={`${sectionKey}-${day}-${row.routine_line_id}-${idx}`}
+                    className="mp-routine-line"
+                  >
+                    <span className="mp-routine-line-title">{row.title}</span>
+                    {row.weight_kg != null && Number.isFinite(row.weight_kg) ? (
+                      <span className="muted mp-routine-weight">{row.weight_kg} kg</span>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+              {!hasRows ? (
+                <p className="muted mp-routine-empty">Sin ejercicios este día.</p>
+              ) : null}
+            </div>
+          );
+        })}
+      </div>
+
+      {modalDay !== null && (daysState[modalDay] ?? []).length > 0 ? (
+        <div
+          className="mp-routine-day-modal-overlay"
+          role="presentation"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) onSelectDay(sectionKey, null);
+          }}
+        >
+          <div
+            className="mp-routine-day-modal-panel"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={`mp-routine-day-modal-title-${sectionKey}`}
+          >
+            <header className="mp-routine-day-modal-head">
+              <h2
+                id={`mp-routine-day-modal-title-${sectionKey}`}
+                className="mp-routine-day-modal-title"
+              >
+                {label} — {DAY_LABELS[modalDay]}
+              </h2>
+              <button
+                type="button"
+                className="mp-routine-day-modal-close"
+                aria-label="Cerrar"
+                onClick={() => onSelectDay(sectionKey, null)}
+              >
+                ×
+              </button>
+            </header>
+            <div className="mp-routine-day-modal-scroll">
+              <div className="mp-routine-exercise-strip">
+                {modalExercisesForDay(
+                  daysState[modalDay] ?? [],
+                  lineByRoutineId,
+                ).map((ex) => (
+                  <article
+                    key={ex.routine_line_id}
+                    className="mp-routine-exercise-card"
+                  >
+                    <h3 className="mp-routine-exercise-card-title">{ex.title}</h3>
+                    <p className="muted mp-routine-exercise-card-meta">
+                      Dificultad: <strong>{ex.difficulty_label}</strong>
+                      {ex.weight_kg != null && Number.isFinite(ex.weight_kg) ? (
+                        <>
+                          {' · '}
+                          Peso: <strong>{ex.weight_kg} kg</strong>
+                        </>
+                      ) : null}
+                    </p>
+                    <p className="mp-routine-exercise-card-desc">
+                      {ex.description?.trim() ? ex.description : 'Sin descripción.'}
+                    </p>
+                    {ex.videos.length === 0 ? (
+                      <p className="muted small">Sin vídeos enlazados.</p>
+                    ) : (
+                      <div className="mp-routine-exercise-videos">
+                        {ex.videos.map((v) => (
+                          <div key={v.id} className="mp-routine-exercise-video-item">
+                            <ActivityYoutubeEmbed
+                              url={v.url}
+                              iframeTitle={`${ex.title} — vídeo`}
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </article>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export function MemberWeeklyRoutinePage() {
   const { user, loading } = useAuth();
   const navigate = useNavigate();
@@ -164,11 +333,17 @@ export function MemberWeeklyRoutinePage() {
   const miembro = searchParams.get('miembro');
   const [ctx, setCtx] = useState<TrainingContext | null>(null);
   const [weekStart, setWeekStart] = useState<string>('');
-  const [daysState, setDaysState] = useState<Record<DayKey, WeekRow[]> | null>(
+  const [generalDays, setGeneralDays] = useState<Record<DayKey, WeekRow[]> | null>(
+    null,
+  );
+  const [personalDays, setPersonalDays] = useState<Record<DayKey, WeekRow[]> | null>(
     null,
   );
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [selectedDay, setSelectedDay] = useState<DayKey | null>(null);
+  const [selected, setSelected] = useState<{
+    section: RoutineSectionKey;
+    day: DayKey;
+  } | null>(null);
 
   const preview = isPortalPreviewRole(user?.role_name);
   const pickedId =
@@ -188,7 +363,8 @@ export function MemberWeeklyRoutinePage() {
     if (!user) return;
     if (needsPick) {
       setCtx(null);
-      setDaysState(null);
+      setGeneralDays(null);
+      setPersonalDays(null);
       setWeekStart('');
       setLoadError(null);
       return;
@@ -210,11 +386,13 @@ export function MemberWeeklyRoutinePage() {
       setCtx(c);
       const ws = wRes.data.week_start || c.week_start_default;
       setWeekStart(ws);
+      setGeneralDays(buildDaysFromBlock(c.general));
+
       const snap = wRes.data.routine_snapshot_json;
-      if (snap && isRecord(snap) && isRecord(snap.days)) {
-        setDaysState(parseDays(snap));
+      if (snap && isRecord(snap) && isRecord(snap.days) && c.personal) {
+        setPersonalDays(parseDays(snap));
       } else {
-        setDaysState(parseDays(buildDefaultSnapshot(c)));
+        setPersonalDays(buildDaysFromBlock(c.personal));
       }
     } catch (e: unknown) {
       if (axios.isAxiosError(e) && e.response?.status === 403) {
@@ -230,29 +408,40 @@ export function MemberWeeklyRoutinePage() {
   }, [loadAll]);
 
   useEffect(() => {
-    if (selectedDay === null) return;
+    if (selected === null) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setSelectedDay(null);
+      if (e.key === 'Escape') setSelected(null);
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [selectedDay]);
+  }, [selected]);
 
-  const lineByRoutineId = useMemo(() => {
-    const m = new Map<number, TrainingLine>();
-    const lines = ctx?.assignment?.lines;
-    if (!lines) return m;
-    for (const line of lines) {
-      m.set(line.id, line);
-    }
-    return m;
-  }, [ctx?.assignment?.lines]);
+  const generalLines = useMemo(
+    () => lineMapFromBlock(ctx?.general ?? null),
+    [ctx?.general],
+  );
+  const personalLines = useMemo(
+    () => lineMapFromBlock(ctx?.personal ?? null),
+    [ctx?.personal],
+  );
 
   useEffect(() => {
-    setSelectedDay(null);
-  }, [needsPick, pickedId, weekStart, ctx?.assignment?.id]);
+    setSelected(null);
+  }, [needsPick, pickedId, weekStart, ctx?.general?.id, ctx?.personal?.id]);
 
-  const hasAssignment = Boolean(ctx?.assignment);
+  const showGeneral =
+    generalDays != null && hasExercises(generalDays) && ctx?.general;
+  const showPersonal =
+    personalDays != null && hasExercises(personalDays) && ctx?.personal;
+  const showEmpty = ctx && !showGeneral && !showPersonal;
+
+  function onSelectDay(section: RoutineSectionKey, day: DayKey | null) {
+    if (day === null) {
+      setSelected(null);
+      return;
+    }
+    setSelected({ section, day });
+  }
 
   if (loading || !user) {
     return (
@@ -279,154 +468,45 @@ export function MemberWeeklyRoutinePage() {
       <h2 className="mp-wellness-section-title">Rutina de la semana</h2>
       {loadError ? <p className="login-error">{loadError}</p> : null}
       {!ctx ? (
-        <p className="muted">Cargando asignación…</p>
-      ) : !hasAssignment ? (
+        <p className="muted">Cargando rutinas…</p>
+      ) : showEmpty ? (
         <p className="muted">
-          Todavía no tienes una rutina asignada. Cuando el personal del club vincule una rutina
-          contigo, podrás consultarla aquí.
+          Todavía no tienes rutina general ni personalizada asignada. Cuando el personal del club
+          configure las rutinas, podrás consultarlas aquí.
         </p>
       ) : (
         <>
           <p className="muted mp-wellness-meta">
             Semana (lunes): <strong>{weekStart || '—'}</strong>
-            {ctx.assignment ? (
-              <>
-                {' · '}
-                Rutina: <strong>{ctx.assignment.routine_title}</strong>
-              </>
-            ) : null}
           </p>
           <p className="muted nutrition-cal-legend">
-            Vista solo lectura. La rutina la define y actualiza el personal del club desde
-            gestión.
+            Vista solo lectura. Puede aparecer la rutina <strong>general</strong> del club y/o tu
+            entrenamiento <strong>personalizado</strong>.
           </p>
           <p className="muted small mp-routine-day-hint">
             Pulsá un día con ejercicios para ver la descripción y los vídeos incrustados de cada uno.
           </p>
-          <div className="mp-routine-week">
-            {DAY_KEYS.map((day) => {
-              const dayRows = daysState?.[day] ?? [];
-              const hasRows = dayRows.length > 0;
-              return (
-                <div
-                  key={day}
-                  className={
-                    hasRows
-                      ? 'mp-routine-day mp-routine-day--clickable'
-                      : 'mp-routine-day'
-                  }
-                  role={hasRows ? 'button' : undefined}
-                  tabIndex={hasRows ? 0 : undefined}
-                  aria-label={
-                    hasRows
-                      ? `${DAY_LABELS[day]}: abrir detalle con ${dayRows.length} ejercicio(s)`
-                      : undefined
-                  }
-                  onClick={() => {
-                    if (hasRows) setSelectedDay(day);
-                  }}
-                  onKeyDown={(e) => {
-                    if (!hasRows) return;
-                    if (e.key === 'Enter' || e.key === ' ') {
-                      e.preventDefault();
-                      setSelectedDay(day);
-                    }
-                  }}
-                >
-                  <h3 className="mp-routine-day-title">{DAY_LABELS[day]}</h3>
-                  <ul className="mp-routine-list">
-                    {dayRows.map((row, idx) => (
-                      <li
-                        key={`${day}-${row.routine_line_id}-${idx}`}
-                        className="mp-routine-line"
-                      >
-                        <span className="mp-routine-line-title">{row.title}</span>
-                        {row.weight_kg != null && Number.isFinite(row.weight_kg) ? (
-                          <span className="muted mp-routine-weight">{row.weight_kg} kg</span>
-                        ) : null}
-                      </li>
-                    ))}
-                  </ul>
-                  {!hasRows ? (
-                    <p className="muted mp-routine-empty">Sin ejercicios este día.</p>
-                  ) : null}
-                </div>
-              );
-            })}
-          </div>
-          {selectedDay !== null && (daysState?.[selectedDay] ?? []).length > 0 ? (
-            <div
-              className="mp-routine-day-modal-overlay"
-              role="presentation"
-              onMouseDown={(e) => {
-                if (e.target === e.currentTarget) setSelectedDay(null);
-              }}
-            >
-              <div
-                className="mp-routine-day-modal-panel"
-                role="dialog"
-                aria-modal="true"
-                aria-labelledby="mp-routine-day-modal-title"
-              >
-                <header className="mp-routine-day-modal-head">
-                  <h2 id="mp-routine-day-modal-title" className="mp-routine-day-modal-title">
-                    {DAY_LABELS[selectedDay]}
-                  </h2>
-                  <button
-                    type="button"
-                    className="mp-routine-day-modal-close"
-                    aria-label="Cerrar"
-                    onClick={() => setSelectedDay(null)}
-                  >
-                    ×
-                  </button>
-                </header>
-                <div className="mp-routine-day-modal-scroll">
-                  <p className="muted small mp-routine-day-modal-sub">
-                    Deslizá horizontalmente para ver cada ejercicio.
-                  </p>
-                  <div className="mp-routine-exercise-strip">
-                    {modalExercisesForDay(
-                      daysState?.[selectedDay] ?? [],
-                      lineByRoutineId,
-                    ).map((ex) => (
-                      <article
-                        key={ex.routine_line_id}
-                        className="mp-routine-exercise-card"
-                      >
-                        <h3 className="mp-routine-exercise-card-title">{ex.title}</h3>
-                        <p className="muted mp-routine-exercise-card-meta">
-                          Dificultad: <strong>{ex.difficulty_label}</strong>
-                          {ex.weight_kg != null && Number.isFinite(ex.weight_kg) ? (
-                            <>
-                              {' · '}
-                              Peso: <strong>{ex.weight_kg} kg</strong>
-                            </>
-                          ) : null}
-                        </p>
-                        <p className="mp-routine-exercise-card-desc">
-                          {ex.description?.trim() ? ex.description : 'Sin descripción.'}
-                        </p>
-                        {ex.videos.length === 0 ? (
-                          <p className="muted small">Sin vídeos enlazados.</p>
-                        ) : (
-                          <div className="mp-routine-exercise-videos">
-                            {ex.videos.map((v) => (
-                              <div key={v.id} className="mp-routine-exercise-video-item">
-                                <ActivityYoutubeEmbed
-                                  url={v.url}
-                                  iframeTitle={`${ex.title} — vídeo`}
-                                />
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </article>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
+          {showGeneral && generalDays && ctx.general ? (
+            <RoutineWeekSection
+              sectionKey="general"
+              label="General"
+              routineTitle={ctx.general.routine_title}
+              daysState={generalDays}
+              lineByRoutineId={generalLines}
+              selected={selected}
+              onSelectDay={onSelectDay}
+            />
+          ) : null}
+          {showPersonal && personalDays && ctx.personal ? (
+            <RoutineWeekSection
+              sectionKey="personal"
+              label="Personalizado"
+              routineTitle={ctx.personal.routine_title}
+              daysState={personalDays}
+              lineByRoutineId={personalLines}
+              selected={selected}
+              onSelectDay={onSelectDay}
+            />
           ) : null}
         </>
       )}

@@ -91,9 +91,8 @@ async function clearAll() {
   await prisma.activityVideo.deleteMany();
   await prisma.activity.deleteMany();
   await prisma.activityCategory.deleteMany();
-  await prisma.gymMemberClass.deleteMany();
+  await prisma.nutritionPlanGeneral.deleteMany();
   await prisma.gymMember.deleteMany();
-  await prisma.classSchedule.deleteMany();
   await prisma.membership.deleteMany();
   await prisma.specialization.deleteMany();
   await prisma.gymRole.deleteMany();
@@ -124,7 +123,14 @@ async function main() {
   });
 
   await prisma.gymRole.create({ data: { id: 1, name: 'General' } });
-  await prisma.specialization.create({ data: { id: 1, name: 'General' } });
+  await prisma.specialization.createMany({
+    data: [
+      { id: 1, name: 'Entrenador' },
+      { id: 2, name: 'Nutricionista' },
+      { id: 3, name: 'Cajero' },
+      { id: 4, name: 'Stock' },
+    ],
+  });
 
   await prisma.membership.createMany({
     data: [
@@ -145,10 +151,6 @@ async function main() {
         signup_fee: 5,
       },
     ],
-  });
-
-  await prisma.classSchedule.create({
-    data: { id: 1, class_name: 'Spinning 09:00' },
   });
 
   await prisma.gymMember.createMany({
@@ -178,6 +180,7 @@ async function main() {
         role: 1,
         gender: 'male',
         created_date: today,
+        s_specialization: JSON.stringify(['1', '2']),
       },
       {
         id: 3,
@@ -260,9 +263,20 @@ async function main() {
   await prisma.trainingRoutine.create({
     data: {
       id: 1,
-      title: 'Rutina demo 4 días',
-      description: 'Ejemplo para asignaciones y portal socio',
+      title: 'Rutina general del club',
+      description: 'Rutina compartida (fuente única) para socios suscritos a general',
       difficulty_level: 'media',
+      is_general: 1,
+    },
+  });
+
+  await prisma.trainingRoutine.create({
+    data: {
+      id: 2,
+      title: 'Rutina personal demo',
+      description: 'Plantilla para asignación personalizada (Luis)',
+      difficulty_level: 'media',
+      is_general: 0,
     },
   });
 
@@ -284,28 +298,58 @@ async function main() {
         weight_kg: 16,
         weekdays_mask: 127,
       },
+      {
+        id: 3,
+        routine_id: 2,
+        activity_id: 1,
+        sort_order: 0,
+        weight_kg: 50,
+        weekdays_mask: 21,
+      },
     ],
   });
 
   await prisma.trainingAssignment.createMany({
-    data: [
-      { id: 1, routine_id: 1 },
-      { id: 2, routine_id: 1 },
-    ],
+    data: [{ id: 1, routine_id: 2 }],
   });
 
   await prisma.trainingAssignmentMember.createMany({
-    data: [
-      { id: 1, assignment_id: 1, member_id: 3 },
-      { id: 2, assignment_id: 2, member_id: 4 },
-    ],
+    data: [{ id: 1, assignment_id: 1, member_id: 4 }],
   });
 
   await prisma.trainingAssignmentTrainer.createMany({
-    data: [
-      { id: 1, assignment_id: 1, trainer_member_id: 2 },
-      { id: 2, assignment_id: 2, trainer_member_id: 2 },
-    ],
+    data: [{ id: 1, assignment_id: 1, trainer_member_id: 2 }],
+  });
+
+  await prisma.nutritionPlanGeneral.create({
+    data: {
+      id: 1,
+      title: 'Dieta general del club',
+      is_published: 1,
+      valid_from: today,
+      valid_to: addDays(today, 365),
+      meals_schedule_json: JSON.stringify([
+        {
+          weekday: 1,
+          hour: 8,
+          event: 'Desayuno general',
+          dish: 'Tostadas integrales con huevo y fruta.',
+          ingredients: [
+            { name: 'Pan integral', quantity: '2 rebanadas' },
+            { name: 'Huevo', quantity: '1 unidad' },
+            { name: 'Fruta de temporada', quantity: '1 pieza' },
+          ],
+        },
+        {
+          weekday: 1,
+          hour: 13,
+          event: 'Almuerzo general',
+          dish: 'Pollo a la plancha con arroz y verduras.',
+        },
+        { weekday: 3, hour: 8, event: 'Desayuno general' },
+        { weekday: 5, hour: 13, event: 'Almuerzo general' },
+      ]),
+    },
   });
 
   await prisma.posProduct.createMany({
@@ -384,13 +428,6 @@ async function main() {
     data: [
       {
         id: 1,
-        member_id: 3,
-        valid_from: today,
-        valid_to: addDays(today, 90),
-        meals_schedule_json: null,
-      },
-      {
-        id: 2,
         member_id: 4,
         valid_from: today,
         valid_to: addDays(today, 90),

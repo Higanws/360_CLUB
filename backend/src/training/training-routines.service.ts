@@ -59,6 +59,7 @@ export class TrainingRoutinesService {
       title: r.title,
       description: r.description,
       difficulty_level: normalizeRoutineDifficulty(r.difficulty_level),
+      is_general: r.is_general === 1,
       exercise_count: countByRoutine.get(r.id) ?? 0,
       created_at:
         r.created_at instanceof Date
@@ -85,6 +86,7 @@ export class TrainingRoutinesService {
       title: r.title,
       description: r.description,
       difficulty_level: normalizeRoutineDifficulty(r.difficulty_level),
+      is_general: r.is_general === 1,
       created_at:
         r.created_at instanceof Date
           ? r.created_at.toISOString()
@@ -113,11 +115,19 @@ export class TrainingRoutinesService {
     const normalized = this.normalizeLines(dto.lines);
     const orderedIds = normalized.map((row) => row.activity_id);
     const difficulty = await this.computeDifficultyForOrderedIds(orderedIds);
+    const isGeneral = dto.is_general === true ? 1 : 0;
+    if (isGeneral === 1) {
+      await this.prisma.trainingRoutine.updateMany({
+        where: { is_general: 1 },
+        data: { is_general: 0 },
+      });
+    }
     const saved = await this.prisma.trainingRoutine.create({
       data: {
         title: dto.title.trim(),
         description: dto.description?.trim() || null,
         difficulty_level: difficulty,
+        is_general: isGeneral,
       },
     });
     await this.replaceLines(saved.id, normalized);
@@ -128,7 +138,12 @@ export class TrainingRoutinesService {
     const r = await this.prisma.trainingRoutine.findUnique({ where: { id } });
     if (!r) throw new NotFoundException('Rutina no encontrada.');
 
-    const data: { title?: string; description?: string | null; difficulty_level?: string } = {};
+    const data: {
+      title?: string;
+      description?: string | null;
+      difficulty_level?: string;
+      is_general?: number;
+    } = {};
     if (dto.title !== undefined) {
       const t = dto.title.trim();
       if (!t) throw new BadRequestException('El título no puede quedar vacío.');
@@ -146,6 +161,16 @@ export class TrainingRoutinesService {
       data.difficulty_level =
         await this.computeDifficultyForOrderedIds(orderedIds);
       await this.replaceLines(id, normalized);
+    }
+    if (dto.is_general !== undefined) {
+      const isGeneral = dto.is_general === true ? 1 : 0;
+      data.is_general = isGeneral;
+      if (isGeneral === 1) {
+        await this.prisma.trainingRoutine.updateMany({
+          where: { is_general: 1, id: { not: id } },
+          data: { is_general: 0 },
+        });
+      }
     }
     if (Object.keys(data).length > 0) {
       await this.prisma.trainingRoutine.update({ where: { id }, data });
