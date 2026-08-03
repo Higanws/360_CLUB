@@ -8,6 +8,7 @@ import {
   routineDifficultyLabel,
 } from '../../lib/activity-difficulty';
 import { extractApiMessage } from '../../lib/extract-api-message';
+import { fetchAllPaginatedRows } from '../../lib/fetch-all-paginated';
 import {
   ROUTINE_WEEKDAY_BITS,
   ROUTINE_WEEKDAY_LABELS,
@@ -89,12 +90,23 @@ export function TrainingRoutineFormPage({ mode }: { mode: Mode }) {
 
   useEffect(() => {
     if (!user) return;
-    api
-      .get<{ activities: ActivityRow[] }>('/activities', {
-        params: { page: 1, pageSize: 500 },
+    let cancelled = false;
+    setError(null);
+    void fetchAllPaginatedRows<ActivityRow>('/activities', 'activities')
+      .then((activities) => {
+        if (!cancelled) setCatalog(activities);
       })
-      .then(({ data }) => setCatalog(data.activities ?? []))
-      .catch(() => setCatalog([]));
+      .catch((err: unknown) => {
+        if (cancelled) return;
+        setCatalog([]);
+        setError(
+          extractApiMessage(err) ||
+            'No se pudieron cargar los ejercicios del catálogo.',
+        );
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [user]);
 
   useEffect(() => {
@@ -113,6 +125,8 @@ export function TrainingRoutineFormPage({ mode }: { mode: Mode }) {
         is_general?: boolean;
         exercises: Array<{
           activity_id: number;
+          title?: string;
+          difficulty_level?: string;
           weight_kg?: number | null;
           weekdays_mask?: number | null;
         }>;
@@ -136,6 +150,19 @@ export function TrainingRoutineFormPage({ mode }: { mode: Mode }) {
                 : ROUTINE_WEEKDAYS_ALL_MASK,
           })),
         );
+        setCatalog((prev) => {
+          const map = new Map(prev.map((a) => [a.id, a]));
+          for (const x of d.exercises ?? []) {
+            if (!map.has(x.activity_id)) {
+              map.set(x.activity_id, {
+                id: x.activity_id,
+                title: x.title?.trim() || `Ejercicio ${x.activity_id}`,
+                difficulty_level: x.difficulty_level ?? 'media',
+              });
+            }
+          }
+          return [...map.values()];
+        });
         setError(null);
       })
       .catch(() => setError('No se pudo cargar la rutina.'))
@@ -352,13 +379,29 @@ export function TrainingRoutineFormPage({ mode }: { mode: Mode }) {
                 value={pickId}
                 onValueChange={setPickId}
                 options={activitySelectOptions}
-                placeholder="— Selecciona —"
+                placeholder={
+                  catalog.length === 0
+                    ? 'Sin ejercicios en el catálogo'
+                    : '— Selecciona —'
+                }
+                disabled={catalog.length === 0}
               />
             </label>
-            <button type="button" className="btn-outline" onClick={addActivity}>
+            <button
+              type="button"
+              className="btn-outline"
+              onClick={addActivity}
+              disabled={catalog.length === 0}
+            >
               Añadir a la rutina
             </button>
           </div>
+          {catalog.length === 0 ? (
+            <p className="muted">
+              No hay ejercicios disponibles para elegir. Creá ejercicios en el
+              módulo Ejercicios y volvé a esta pantalla.
+            </p>
+          ) : null}
 
           {routineLines.length === 0 ? (
             <p className="muted">Aún no hay ejercicios en el orden de trabajo.</p>

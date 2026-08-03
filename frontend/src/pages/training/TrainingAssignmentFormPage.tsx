@@ -10,6 +10,7 @@ import {
 } from '../../lib/members-api';
 import { useDebouncedValue } from '../../hooks/useDebouncedValue';
 import { extractApiMessage } from '../../lib/extract-api-message';
+import { fetchAllPaginatedRows } from '../../lib/fetch-all-paginated';
 import { useAuth } from '../../context/AuthContext';
 
 type RoutineRow = {
@@ -62,18 +63,27 @@ export function TrainingAssignmentFormPage() {
 
   useEffect(() => {
     if (!user) return;
+    let cancelled = false;
     Promise.all([
-      api.get<{ routines: RoutineRow[] }>('/training-routines', {
-        params: { page: 1, pageSize: 500 },
-      }),
-      api.get<StaffPayload>('/staff', { params: { page: 1, pageSize: 500 } }),
+      fetchAllPaginatedRows<RoutineRow>('/training-routines', 'routines'),
+      fetchAllPaginatedRows<StaffPayload['staff'][number]>('/staff', 'staff'),
     ])
-      .then(([rRes, sRes]) => {
-        setRoutines(rRes.data.routines ?? []);
-        setStaff(sRes.data.staff ?? []);
+      .then(([rRows, sRows]) => {
+        if (cancelled) return;
+        setRoutines(rRows);
+        setStaff(sRows);
         setError(null);
       })
-      .catch(() => setError('No se pudieron cargar rutinas o staff.'));
+      .catch((err: unknown) => {
+        if (!cancelled) {
+          setError(
+            extractApiMessage(err) || 'No se pudieron cargar rutinas o staff.',
+          );
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [user]);
 
   useEffect(() => {

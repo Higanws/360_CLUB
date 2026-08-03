@@ -5,6 +5,7 @@ import { routes } from '../../config/member-management';
 import { memberPortalRoutes } from '../../config/member-portal';
 import { api } from '../../lib/api';
 import { extractApiMessage } from '../../lib/extract-api-message';
+import { fetchAllPaginatedRows } from '../../lib/fetch-all-paginated';
 import {
   ACTIVITY_DIFFICULTY_LEVELS,
   activityDifficultyLabel,
@@ -66,11 +67,8 @@ export function ActivityFormPage({ mode }: { mode: Mode }) {
       .get<Category[]>('/activities/categories')
       .then(({ data }) => setCategories(data))
       .catch(() => setCategories([]));
-    api
-      .get<{ staff: StaffRow[]; meta?: unknown }>('/staff', {
-        params: { page: 1, pageSize: 500 },
-      })
-      .then(({ data }) => setStaffList(data.staff ?? []))
+    void fetchAllPaginatedRows<StaffRow>('/staff', 'staff')
+      .then((rows) => setStaffList(rows))
       .catch(() => setStaffList([]));
   }, [user, navigate]);
 
