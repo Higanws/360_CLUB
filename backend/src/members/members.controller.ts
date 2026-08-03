@@ -18,6 +18,7 @@ import { MembersSearchQueryDto } from './dto/members-search-query.dto';
 import { UpdateMemberDto } from './dto/update-member.dto';
 import { MembersService } from './members.service';
 import { BusinessRoles } from './roles.decorator';
+import { AdministratorRoleGuard } from '../staff/administrator-role.guard';
 import {
   RequireStaffSpecs,
   StaffSpecializationGuard,
@@ -36,6 +37,16 @@ export class MembersController {
   @RequireStaffSpecs(STAFF_SPEC.CAJERO)
   formOptions() {
     return this.members.formOptions();
+  }
+
+  /**
+   * Admin: realinea `member_id` al formato M{id}{dd}{yy} (alta nativa)
+   * para todos los socios; limpia códigos en filas de staff.
+   */
+  @Post('normalize-member-ids')
+  @UseGuards(AdministratorRoleGuard)
+  normalizeMemberIds() {
+    return this.members.normalizeMemberIds();
   }
 
   /** Búsqueda por nombre, username o DNI (MCP / integraciones). */

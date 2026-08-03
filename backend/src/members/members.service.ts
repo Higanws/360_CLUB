@@ -13,6 +13,7 @@ import { Prisma } from '@prisma/client';
 import type { GymMember } from '@prisma/client';
 import { PrismaService } from '../database/prisma.service';
 import { normalizeClubRole } from '../shared/domain/club/club-roles';
+import { formatMemberCode } from '../shared/domain/club/member-code';
 import {
   assertStaffOwnsMember,
   staffMustUseOwnMembersOnly,
@@ -143,10 +144,7 @@ export class MembersService {
   }
 
   private formatMemberCode(id: number): string {
-    const d = new Date();
-    const dd = String(d.getDate()).padStart(2, '0');
-    const yy = String(d.getFullYear()).slice(-2);
-    return `M${id}${dd}${yy}`;
+    return formatMemberCode(id);
   }
 
   private parseOptionalDate(s?: string | null): Date | null {
@@ -644,6 +642,69 @@ export class MembersService {
     const fresh = await this.prisma.gymMember.findUnique({ where: { id } });
     if (!fresh) throw new NotFoundException();
     return { member: this.toSafeDetail(fresh) };
+  }
+
+  async normalizeMemberIds(): Promise<{
+    members: Array<{ id: number; from: string | null; to: string }>;
+    staff: Array<{ id: number; from: string | null; to: string }>;
+  }> {
+    const membersUpdated: Array<{
+      id: number;
+      from: string | null;
+      to: string;
+    }> = [];
+    const staffUpdated: Array<{
+      id: number;
+      from: string | null;
+      to: string;
+    }> = [];
+
+    const rows = await this.prisma.gymMember.findMany({
+      select: {
+        id: true,
+        role_name: true,
+        member_id: true,
+        created_date: true,
+      },
+      orderBy: { id: 'asc' },
+    });
+
+    for (const row of rows) {
+      const role = normalizeClubRole(row.role_name);
+      if (role === 'member') {
+        const at =
+          row.created_date instanceof Date &&
+          !Number.isNaN(row.created_date.getTime())
+            ? row.created_date
+            : new Date();
+        const to = formatMemberCode(row.id, at);
+        if ((row.member_id ?? '') !== to) {
+          await this.prisma.gymMember.update({
+            where: { id: row.id },
+            data: { member_id: to },
+          });
+          membersUpdated.push({
+            id: row.id,
+            from: row.member_id,
+            to,
+          });
+        }
+        continue;
+      }
+
+      if (role === 'staff_member' || role === 'administrator') {
+        const from = row.member_id;
+        if (from != null && from !== '') {
+          await this.prisma.gymMember.update({
+            where: { id: row.id },
+            data: { member_id: '' },
+          });
+          staffUpdated.push({ id: row.id, from, to: '' });
+        }
+      }
+    }
+
+    return { members: membersUpdated, staff: staffUpdated };
   }
 
   async remove(

@@ -52,13 +52,13 @@ INSERT INTO `gym_member` (
   'staff@local.test', 1, 'male', CURDATE(), NULL, '["1","2"]', 1, 1
 ),
 (
-  3, 1, 'member', '2024001', 'Ana', '', 'García',
+  3, 1, 'member', 'M31526', 'Ana', '', 'García',
   'ana_member',
   '$2b$10$VUJLd1DP3..rc6C3ilaQAuunh1oqnRdLpHYzZn6l5PGXOhee9vkoO',
   'ana@demo.local', NULL, 'female', CURDATE(), 2, NULL, 1, 1
 ),
 (
-  4, 1, 'member', '2024002', 'Luis', '', 'Martín',
+  4, 1, 'member', 'M41526', 'Luis', '', 'Martín',
   'luis_member',
   '$2b$10$VUJLd1DP3..rc6C3ilaQAuunh1oqnRdLpHYzZn6l5PGXOhee9vkoO',
   'luis@demo.local', NULL, 'male', CURDATE(), 2, NULL, 1, 1
@@ -143,7 +143,7 @@ INSERT INTO `club_access_log` (
   `due_date_snapshot`, `days_remaining`, `days_overdue`
 ) VALUES
 (
-  1, 3, CURDATE(), NOW(), 2, 'allowed', 'OK', '2024001', NULL, 10, NULL
+  1, 3, CURDATE(), NOW(), 2, 'allowed', 'OK', 'M31526', NULL, 10, NULL
 ),
 (
   2, NULL, CURDATE(), NOW(), 2, 'denied_not_found', NULL, '99999', NULL, NULL, NULL
