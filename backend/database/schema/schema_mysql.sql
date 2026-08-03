@@ -20,6 +20,7 @@ SET sql_mode = 'NO_AUTO_VALUE_ON_ZERO';
 SET FOREIGN_KEY_CHECKS = 0;
 
 TRUNCATE TABLE `nutrition_plan`;
+TRUNCATE TABLE `nutrition_plan_general`;
 TRUNCATE TABLE `member_weekly_routine`;
 TRUNCATE TABLE `training_assignment_trainer`;
 TRUNCATE TABLE `training_assignment_member`;
@@ -33,12 +34,10 @@ TRUNCATE TABLE `pos_sale_line`;
 TRUNCATE TABLE `pos_sale`;
 TRUNCATE TABLE `pos_product`;
 TRUNCATE TABLE `membership_payment`;
-TRUNCATE TABLE `gym_member_class`;
 TRUNCATE TABLE `club_access_log`;
 TRUNCATE TABLE `gym_member`;
 TRUNCATE TABLE `training_routine`;
 TRUNCATE TABLE `membership`;
-TRUNCATE TABLE `class_schedule`;
 TRUNCATE TABLE `general_setting`;
 TRUNCATE TABLE `gym_roles`;
 TRUNCATE TABLE `specialization`;
@@ -46,7 +45,7 @@ TRUNCATE TABLE `specialization`;
 SET FOREIGN_KEY_CHECKS = 1;
 
 -- =============================================================================
--- Esquema — CREATE TABLE IF NOT EXISTS (24 tablas MVP)
+-- Esquema — CREATE TABLE IF NOT EXISTS (tablas MVP)
 -- =============================================================================
 
 CREATE TABLE IF NOT EXISTS `general_setting` (
@@ -87,11 +86,6 @@ CREATE TABLE IF NOT EXISTS `membership` (
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE TABLE IF NOT EXISTS `class_schedule` (
-  `id` int NOT NULL AUTO_INCREMENT,
-  `class_name` varchar(100) DEFAULT NULL,
-  PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `gym_member` (
   `id` int NOT NULL AUTO_INCREMENT,
@@ -131,6 +125,8 @@ CREATE TABLE IF NOT EXISTS `gym_member` (
   `first_pay_date` date DEFAULT NULL,
   `created_by` int DEFAULT NULL,
   `created_date` date DEFAULT NULL,
+  `subscribe_nutrition_general` tinyint NOT NULL DEFAULT 1,
+  `subscribe_training_general` tinyint NOT NULL DEFAULT 1,
   `physical_weight_kg` decimal(10,2) DEFAULT NULL,
   `physical_height_cm` decimal(10,2) DEFAULT NULL,
   `physical_chest_cm` decimal(10,2) DEFAULT NULL,
@@ -144,14 +140,6 @@ CREATE TABLE IF NOT EXISTS `gym_member` (
   KEY `idx_gym_member_username` (`username`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE TABLE IF NOT EXISTS `gym_member_class` (
-  `id` int NOT NULL AUTO_INCREMENT,
-  `member_id` int DEFAULT NULL,
-  `assign_class` int DEFAULT NULL,
-  PRIMARY KEY (`id`),
-  KEY `idx_gym_member_class_member` (`member_id`),
-  KEY `idx_gym_member_class_assign` (`assign_class`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `membership_payment` (
   `mp_id` int NOT NULL AUTO_INCREMENT,
@@ -252,8 +240,10 @@ CREATE TABLE IF NOT EXISTS `training_routine` (
   `title` varchar(200) NOT NULL,
   `description` text,
   `difficulty_level` varchar(20) NOT NULL DEFAULT 'media',
+  `is_general` tinyint NOT NULL DEFAULT 0,
   `created_at` datetime DEFAULT CURRENT_TIMESTAMP,
-  PRIMARY KEY (`id`)
+  PRIMARY KEY (`id`),
+  KEY `idx_training_routine_general` (`is_general`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `training_routine_activity` (
@@ -312,6 +302,19 @@ CREATE TABLE IF NOT EXISTS `nutrition_plan` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_nutrition_plan_member` (`member_id`),
   CONSTRAINT `fk_nutrition_plan_member` FOREIGN KEY (`member_id`) REFERENCES `gym_member` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `nutrition_plan_general` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `title` varchar(200) NOT NULL DEFAULT 'Dieta general',
+  `is_published` tinyint NOT NULL DEFAULT 1,
+  `valid_from` date DEFAULT NULL,
+  `valid_to` date DEFAULT NULL,
+  `meals_schedule_json` longtext DEFAULT NULL,
+  `created_at` datetime DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_nutrition_plan_general_published` (`is_published`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `member_weekly_routine` (

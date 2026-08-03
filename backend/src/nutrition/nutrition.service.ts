@@ -7,6 +7,7 @@ import {
 import { Prisma } from '@prisma/client';
 import type { GymMember } from '@prisma/client';
 import { PrismaService } from '../database/prisma.service';
+import { UpsertNutritionGeneralDto } from './dto/upsert-nutrition-general.dto';
 import { UpsertNutritionPlanDto } from './dto/upsert-nutrition-plan.dto';
 import {
   buildPageMeta,
@@ -38,6 +39,15 @@ export type NutritionPlanPayload = {
   member_id: number;
   first_name: string | null;
   last_name: string | null;
+  valid_from: string | null;
+  valid_to: string | null;
+  schedule_slots: NutritionScheduleSlot[];
+};
+
+export type NutritionGeneralPayload = {
+  id: number;
+  title: string;
+  is_published: boolean;
   valid_from: string | null;
   valid_to: string | null;
   schedule_slots: NutritionScheduleSlot[];
@@ -287,5 +297,96 @@ export class NutritionService {
       where: { member_id: memberId },
     });
     return { ok: true };
+  }
+
+  private mapGeneralPlanRow(plan: {
+    id: number;
+    title: string;
+    is_published: number;
+    valid_from: Date | string | null;
+    valid_to: Date | string | null;
+    meals_schedule_json: string | null;
+  }): NutritionGeneralPayload {
+    return {
+      id: plan.id,
+      title: plan.title,
+      is_published: plan.is_published === 1,
+      valid_from: toIsoDateOnly(plan.valid_from),
+      valid_to: toIsoDateOnly(plan.valid_to),
+      schedule_slots: parseMealsScheduleJson(plan.meals_schedule_json),
+    };
+  }
+
+  async getGeneralPlan(actor: {
+    userId: number;
+    role_name: string;
+  }): Promise<{ plan: NutritionGeneralPayload | null }> {
+    this.assertBusinessRole(actor.role_name);
+    const plan = await this.prisma.nutritionPlanGeneral.findFirst({
+      orderBy: { id: 'asc' },
+    });
+    if (!plan) return { plan: null };
+    return { plan: this.mapGeneralPlanRow(plan) };
+  }
+
+  async upsertGeneralPlan(
+    dto: UpsertNutritionGeneralDto,
+    actor: { userId: number; role_name: string },
+  ): Promise<{ plan: NutritionGeneralPayload }> {
+    this.assertBusinessRole(actor.role_name);
+
+    const validFrom =
+      dto.valid_from && dto.valid_from !== ''
+        ? new Date(dto.valid_from)
+        : null;
+    const validTo =
+      dto.valid_to && dto.valid_to !== '' ? new Date(dto.valid_to) : null;
+
+    const slots = normalizeSlotsFromDto(dto);
+    const meals_schedule_json = stringifyMealsScheduleJson(slots);
+
+    const isPublished =
+      dto.is_published === undefined ? undefined : dto.is_published ? 1 : 0;
+
+    const existing = await this.prisma.nutritionPlanGeneral.findFirst({
+      orderBy: { id: 'asc' },
+    });
+
+    if (existing) {
+      await this.prisma.nutritionPlanGeneral.update({
+        where: { id: existing.id },
+        data: {
+          ...(dto.title !== undefined
+            ? {
+                title: (dto.title.trim() || 'Dieta general').slice(0, 200),
+              }
+            : {}),
+          ...(isPublished !== undefined ? { is_published: isPublished } : {}),
+          valid_from: validFrom,
+          valid_to: validTo,
+          meals_schedule_json,
+        },
+      });
+    } else {
+      await this.prisma.nutritionPlanGeneral.create({
+        data: {
+          title:
+            dto.title !== undefined
+              ? (dto.title.trim() || 'Dieta general').slice(0, 200)
+              : 'Dieta general',
+          is_published: isPublished ?? 1,
+          valid_from: validFrom,
+          valid_to: validTo,
+          meals_schedule_json,
+          created_at: new Date(),
+        },
+      });
+    }
+
+    const saved = await this.prisma.nutritionPlanGeneral.findFirst({
+      orderBy: { id: 'asc' },
+    });
+    if (!saved) throw new NotFoundException('Plan general no encontrado.');
+    return { plan: this.mapGeneralPlanRow(saved) };
   }
 }

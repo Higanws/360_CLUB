@@ -14,7 +14,6 @@ import { useAuth } from '../context/AuthContext';
 
 type FormOptions = {
   staff: { id: number; label: string }[];
-  classes: { id: number; class_name: string | null }[];
   memberships: {
     id: number;
     membership_label: string | null;
@@ -43,7 +42,8 @@ type MemberPayload = {
   membership_valid_to: string | null;
   selected_membership: string | null;
   assign_staff_mem: number | null;
-  assign_class_ids: number[];
+  subscribe_nutrition_general?: number | boolean;
+  subscribe_training_general?: number | boolean;
   physical_weight_kg: number | null;
   physical_height_cm: number | null;
   physical_chest_cm: number | null;
@@ -83,7 +83,10 @@ export function MemberFormPage({ mode }: { mode: Mode }) {
   const [selected_membership, setPlan] = useState('');
   const [assign_staff_mem, setStaff] = useState('');
   const [activated, setActivated] = useState(true);
-  const [classPick, setClassPick] = useState<Record<number, boolean>>({});
+  const [subscribeNutritionGeneral, setSubscribeNutritionGeneral] =
+    useState(true);
+  const [subscribeTrainingGeneral, setSubscribeTrainingGeneral] =
+    useState(true);
   const [physical_weight_kg, setPhysicalWeight] = useState('');
   const [physical_height_cm, setPhysicalHeight] = useState('');
   const [physical_chest_cm, setPhysicalChest] = useState('');
@@ -165,11 +168,16 @@ export function MemberFormPage({ mode }: { mode: Mode }) {
           m.assign_staff_mem != null ? String(m.assign_staff_mem) : '',
         );
         setActivated(m.activated === 1);
-        const picks: Record<number, boolean> = {};
-        for (const cid of m.assign_class_ids ?? []) {
-          picks[cid] = true;
-        }
-        setClassPick(picks);
+        setSubscribeNutritionGeneral(
+          m.subscribe_nutrition_general === undefined ||
+            m.subscribe_nutrition_general === 1 ||
+            m.subscribe_nutrition_general === true,
+        );
+        setSubscribeTrainingGeneral(
+          m.subscribe_training_general === undefined ||
+            m.subscribe_training_general === 1 ||
+            m.subscribe_training_general === true,
+        );
         setPhysicalWeight(
           m.physical_weight_kg != null ? String(m.physical_weight_kg) : '',
         );
@@ -196,23 +204,6 @@ export function MemberFormPage({ mode }: { mode: Mode }) {
         setError(extractApiMessage(e) || 'No se pudo cargar el socio.'),
       );
   }, [isEdit, id, user]);
-
-  useEffect(() => {
-    if (!options?.classes.length) return;
-    setClassPick((prev) => {
-      const next = { ...prev };
-      for (const c of options.classes) {
-        if (next[c.id] === undefined) next[c.id] = false;
-      }
-      return next;
-    });
-  }, [options]);
-
-  const assign_class_ids = useMemo(() => {
-    return Object.entries(classPick)
-      .filter(([, v]) => v)
-      .map(([k]) => parseInt(k, 10));
-  }, [classPick]);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -245,7 +236,8 @@ export function MemberFormPage({ mode }: { mode: Mode }) {
         assign_staff_mem:
           assign_staff_mem === '' ? undefined : parseInt(assign_staff_mem, 10),
         activated: activated ? 1 : 0,
-        assign_class_ids,
+        subscribe_nutrition_general: subscribeNutritionGeneral,
+        subscribe_training_general: subscribeTrainingGeneral,
         physical_weight_kg: optPhysicalNum(physical_weight_kg),
         physical_height_cm: optPhysicalNum(physical_height_cm),
         physical_chest_cm: optPhysicalNum(physical_chest_cm),
@@ -561,31 +553,24 @@ export function MemberFormPage({ mode }: { mode: Mode }) {
               />
               Cuenta activada (puede iniciar sesión como socio)
             </label>
-          </div>
-        </section>
-
-        <section className="home-card member-form-section">
-          <h2 className="member-detail-h2">Clases</h2>
-          <div className="member-form-classes">
-            {(options?.classes ?? []).length === 0 ? (
-              <p className="muted">No hay clases definidas en el sistema.</p>
-            ) : (
-              (options?.classes ?? []).map((c) => (
-                <label key={c.id} className="member-form-check">
-                  <input
-                    type="checkbox"
-                    checked={!!classPick[c.id]}
-                    onChange={(e) =>
-                      setClassPick((p) => ({
-                        ...p,
-                        [c.id]: e.target.checked,
-                      }))
-                    }
-                  />
-                  {c.class_name ?? `Clase ${c.id}`}
-                </label>
-              ))
-            )}
+            <label className="member-form-check">
+              <input
+                type="checkbox"
+                checked={subscribeNutritionGeneral}
+                onChange={(e) =>
+                  setSubscribeNutritionGeneral(e.target.checked)
+                }
+              />
+              Suscrito a dieta general
+            </label>
+            <label className="member-form-check">
+              <input
+                type="checkbox"
+                checked={subscribeTrainingGeneral}
+                onChange={(e) => setSubscribeTrainingGeneral(e.target.checked)}
+              />
+              Suscrito a rutina general
+            </label>
           </div>
         </section>
 

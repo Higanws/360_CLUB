@@ -20,6 +20,8 @@ export type UserProfile = {
   first_name: string | null;
   last_name: string | null;
   email: string | null;
+  specialization_ids?: number[];
+  specializations?: { id: number; name: string }[];
 };
 
 /** Sesión socio: por pestaña. Admin/staff: localStorage compartido entre pestañas. */

@@ -1,6 +1,5 @@
 import { Transform, Type } from 'class-transformer';
 import {
-  IsArray,
   IsDateString,
   IsEmail,
   IsIn,
@@ -114,10 +113,12 @@ export class UpdateMemberDto {
   activated?: number;
 
   @IsOptional()
-  @IsArray()
-  @Type(() => Number)
-  @IsInt({ each: true })
-  assign_class_ids?: number[];
+  @Transform(({ value }) => value === true || value === 1 || value === '1' || value === 'true')
+  subscribe_nutrition_general?: boolean;
+
+  @IsOptional()
+  @Transform(({ value }) => value === true || value === 1 || value === '1' || value === 'true')
+  subscribe_training_general?: boolean;
 
   @IsOptional()
   @Transform(({ value }) =>

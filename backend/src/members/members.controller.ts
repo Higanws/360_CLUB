@@ -18,7 +18,11 @@ import { MembersSearchQueryDto } from './dto/members-search-query.dto';
 import { UpdateMemberDto } from './dto/update-member.dto';
 import { MembersService } from './members.service';
 import { BusinessRoles } from './roles.decorator';
-import { AdministratorRoleGuard } from '../staff/administrator-role.guard';
+import {
+  RequireStaffSpecs,
+  StaffSpecializationGuard,
+} from '../shared/application/security/staff-specialization.guard';
+import { STAFF_SPEC } from '../shared/application/security/staff-specialization';
 
 @Controller('members')
 @UseGuards(BusinessRoleGuard)
@@ -26,9 +30,10 @@ import { AdministratorRoleGuard } from '../staff/administrator-role.guard';
 export class MembersController {
   constructor(private readonly members: MembersService) {}
 
-  /** Listas desplegables (staff, clases, planes). */
+  /** Listas desplegables (staff, planes). */
   @Get('form-options')
-  @UseGuards(AdministratorRoleGuard)
+  @UseGuards(StaffSpecializationGuard)
+  @RequireStaffSpecs(STAFF_SPEC.CAJERO)
   formOptions() {
     return this.members.formOptions();
   }
@@ -64,7 +69,8 @@ export class MembersController {
   }
 
   @Post()
-  @UseGuards(AdministratorRoleGuard)
+  @UseGuards(StaffSpecializationGuard)
+  @RequireStaffSpecs(STAFF_SPEC.CAJERO)
   create(
     @Body() dto: CreateMemberDto,
     @Req() req: { user: { userId: number; role_name: string } },
@@ -87,7 +93,8 @@ export class MembersController {
   }
 
   @Patch(':id')
-  @UseGuards(AdministratorRoleGuard)
+  @UseGuards(StaffSpecializationGuard)
+  @RequireStaffSpecs(STAFF_SPEC.CAJERO)
   update(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateMemberDto,
@@ -100,7 +107,8 @@ export class MembersController {
   }
 
   @Delete(':id')
-  @UseGuards(AdministratorRoleGuard)
+  @UseGuards(StaffSpecializationGuard)
+  @RequireStaffSpecs(STAFF_SPEC.CAJERO)
   remove(
     @Param('id', ParseIntPipe) id: number,
     @Req() req: { user: { userId: number; role_name: string } },

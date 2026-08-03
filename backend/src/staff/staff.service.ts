@@ -18,6 +18,10 @@ import {
 } from '../shared/dto/paginated-meta';
 import { toIsoDateOnly } from '../shared/domain/shared/iso-date';
 import {
+  decodeSpecializationIds,
+  encodeSpecializationIds,
+} from '../shared/application/security/staff-specialization';
+import {
   PASSWORD_HASHER,
   type PasswordHasher,
 } from '../shared/application/ports/password-hasher.port';
@@ -65,20 +69,11 @@ export class StaffService {
   ) {}
 
   encodeSpecialization(ids: number[]): string {
-    return JSON.stringify(ids.map((id) => String(id)));
+    return encodeSpecializationIds(ids);
   }
 
   decodeSpecialization(json: string | null): number[] {
-    if (!json) return [];
-    try {
-      const arr = JSON.parse(json) as unknown;
-      if (!Array.isArray(arr)) return [];
-      return arr
-        .map((x) => parseInt(String(x), 10))
-        .filter((n) => !Number.isNaN(n) && n > 0);
-    } catch {
-      return [];
-    }
+    return decodeSpecializationIds(json);
   }
 
   async formOptions() {

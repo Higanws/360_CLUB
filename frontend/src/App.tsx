@@ -115,6 +115,11 @@ const NutritionOverviewPage = lazy(() =>
     default: m.NutritionOverviewPage,
   })),
 );
+const NutritionGeneralPlanPage = lazy(() =>
+  import('./pages/nutrition/NutritionGeneralPlanPage').then((m) => ({
+    default: m.NutritionGeneralPlanPage,
+  })),
+);
 const NutritionPlanPage = lazy(() =>
   import('./pages/nutrition/NutritionPlanPage').then((m) => ({
     default: m.NutritionPlanPage,
@@ -409,6 +414,14 @@ export default function App() {
             element={
               <LazyPage>
                 <NutritionOverviewPage />
+              </LazyPage>
+            }
+          />
+          <Route
+            path="general"
+            element={
+              <LazyPage>
+                <NutritionGeneralPlanPage />
               </LazyPage>
             }
           />

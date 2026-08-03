@@ -1,4 +1,4 @@
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
   ArrayMinSize,
   IsArray,
@@ -26,4 +26,11 @@ export class UpdateTrainingRoutineDto {
   @ValidateNested({ each: true })
   @Type(() => TrainingRoutineLineDto)
   lines?: TrainingRoutineLineDto[];
+
+  @IsOptional()
+  @Transform(
+    ({ value }) =>
+      value === true || value === 1 || value === '1' || value === 'true',
+  )
+  is_general?: boolean;
 }

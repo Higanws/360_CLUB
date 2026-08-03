@@ -69,12 +69,15 @@ export function NutritionOverviewPage() {
         <div>
           <h1>Nutrición</h1>
           <p className="muted">
-            Cada plan es exclusivo de un socio. La semana tipo se guarda como
-            franjas día + hora + texto (comida, ingredientes, preparación) en un
-            solo JSON por plan.
+            Los planes <strong>personalizados</strong> son exclusivos de cada socio. La{' '}
+            <strong>dieta general</strong> del club la ven los socios suscritos a nutrición
+            general (junto con su plan personal si lo tienen).
           </p>
         </div>
         <div className="members-toolbar">
+          <Link to={routes.nutricionGeneral} className="btn-outline">
+            Dieta general
+          </Link>
           <Link to={routes.nutricionNuevo} className="btn-primary">
             + Crear dieta
           </Link>

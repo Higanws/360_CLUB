@@ -35,7 +35,8 @@ type MemberDetail = {
   trial_end_date: string | null;
   first_pay_date: string | null;
   created_date: string | null;
-  assign_class_ids: number[];
+  subscribe_nutrition_general?: number | boolean;
+  subscribe_training_general?: number | boolean;
 };
 
 export function MemberDetailPage() {
@@ -144,11 +145,19 @@ export function MemberDetailPage() {
               <dd>
                 {genderLabelEs(member.gender)} · {member.birth_date ?? '—'}
               </dd>
-              <dt>Clases asignadas (ids)</dt>
+              <dt>Dieta general</dt>
               <dd>
-                {member.assign_class_ids?.length
-                  ? member.assign_class_ids.join(', ')
-                  : '—'}
+                {member.subscribe_nutrition_general === 0 ||
+                member.subscribe_nutrition_general === false
+                  ? 'No'
+                  : 'Sí'}
+              </dd>
+              <dt>Rutina general</dt>
+              <dd>
+                {member.subscribe_training_general === 0 ||
+                member.subscribe_training_general === false
+                  ? 'No'
+                  : 'Sí'}
               </dd>
               <dt>Plan (id)</dt>
               <dd>{member.selected_membership ?? '—'}</dd>

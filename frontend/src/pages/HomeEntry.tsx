@@ -24,5 +24,10 @@ export function HomeEntry() {
     return <Navigate to={memberPortalRoutes.wellness} replace />;
   }
 
-  return <Navigate to={gestionHomeForRole(user.role_name)} replace />;
+  return (
+    <Navigate
+      to={gestionHomeForRole(user.role_name, user.specializations ?? [])}
+      replace
+    />
+  );
 }

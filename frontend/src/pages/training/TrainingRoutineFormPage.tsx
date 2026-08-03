@@ -55,6 +55,7 @@ export function TrainingRoutineFormPage({ mode }: { mode: Mode }) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [routineLines, setRoutineLines] = useState<RoutineLineForm[]>([]);
+  const [isGeneral, setIsGeneral] = useState(false);
   const [pickId, setPickId] = useState('');
 
   const byId = useMemo(
@@ -109,6 +110,7 @@ export function TrainingRoutineFormPage({ mode }: { mode: Mode }) {
       .get<{
         title: string;
         description: string | null;
+        is_general?: boolean;
         exercises: Array<{
           activity_id: number;
           weight_kg?: number | null;
@@ -118,6 +120,7 @@ export function TrainingRoutineFormPage({ mode }: { mode: Mode }) {
       .then(({ data: d }) => {
         setTitle(d.title);
         setDescription(d.description ?? '');
+        setIsGeneral(d.is_general === true);
         setRoutineLines(
           (d.exercises ?? []).map((x) => ({
             activityId: x.activity_id,
@@ -228,6 +231,7 @@ export function TrainingRoutineFormPage({ mode }: { mode: Mode }) {
     const body = {
       title: t,
       description: description.trim() || undefined,
+      is_general: isGeneral,
       lines: routineLines.map((l) => {
         const trimmed = l.weightKg.trim();
         const base = {
@@ -316,6 +320,15 @@ export function TrainingRoutineFormPage({ mode }: { mode: Mode }) {
               onChange={(e) => setDescription(e.target.value)}
               rows={3}
             />
+          </label>
+
+          <label className="pay-manual-row member-form-checkbox">
+            <input
+              type="checkbox"
+              checked={isGeneral}
+              onChange={(e) => setIsGeneral(e.target.checked)}
+            />
+            Rutina general del club (sustituye la anterior marcada como general)
           </label>
 
           <div className="pay-manual-row">

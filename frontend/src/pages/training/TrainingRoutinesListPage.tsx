@@ -19,6 +19,7 @@ type Row = {
   title: string;
   difficulty_level: string;
   exercise_count: number;
+  is_general?: boolean;
 };
 
 export function TrainingRoutinesListPage() {
@@ -155,7 +156,17 @@ export function TrainingRoutinesListPage() {
               ) : (
                 rows.map((row) => (
                   <tr key={row.id}>
-                    <td>{row.title}</td>
+                    <td>
+                      {row.title}
+                      {row.is_general ? (
+                        <span
+                          className="member-status member-status--ok"
+                          style={{ marginLeft: '0.5rem' }}
+                        >
+                          General
+                        </span>
+                      ) : null}
+                    </td>
                     <td>{routineDifficultyLabel(row.difficulty_level)}</td>
                     <td>{row.exercise_count}</td>
                     <MmTableActions label={`Rutina ${row.title}`}>

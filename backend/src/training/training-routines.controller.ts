@@ -13,13 +13,19 @@ import {
 import { AuthGuard } from '@nestjs/passport';
 import { BusinessRoleGuard } from '../members/business-role.guard';
 import { BusinessRoles } from '../members/roles.decorator';
+import {
+  RequireStaffSpecs,
+  StaffSpecializationGuard,
+} from '../shared/application/security/staff-specialization.guard';
+import { STAFF_SPEC } from '../shared/application/security/staff-specialization';
 import { PaginationQueryDto } from '../shared/dto/pagination-query.dto';
 import { CreateTrainingRoutineDto } from './dto/create-training-routine.dto';
 import { UpdateTrainingRoutineDto } from './dto/update-training-routine.dto';
 import { TrainingRoutinesService } from './training-routines.service';
 
 @Controller('training-routines')
-@UseGuards(AuthGuard('jwt'), BusinessRoleGuard)
+@UseGuards(AuthGuard('jwt'), BusinessRoleGuard, StaffSpecializationGuard)
+@RequireStaffSpecs(STAFF_SPEC.ENTRENADOR)
 @BusinessRoles()
 export class TrainingRoutinesController {
   constructor(private readonly routines: TrainingRoutinesService) {}

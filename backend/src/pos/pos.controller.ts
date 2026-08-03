@@ -15,7 +15,10 @@ import {
 import type { Response } from 'express';
 import { BusinessRoleGuard } from '../members/business-role.guard';
 import { BusinessRoles } from '../members/roles.decorator';
-import { AdministratorRoleGuard } from '../staff/administrator-role.guard';
+import {
+  PosCapabilityGuard,
+  RequirePosCapability,
+} from '../shared/application/security/pos-capability.guard';
 import { CreatePosProductDto } from './dto/create-product.dto';
 import { CreatePosSaleDto } from './dto/create-sale.dto';
 import { UpdatePosProductDto } from './dto/update-product.dto';
@@ -25,7 +28,7 @@ import { PosProductsService } from './pos-products.service';
 import { PosSalesService } from './pos-sales.service';
 
 @Controller('pos')
-@UseGuards(BusinessRoleGuard, AdministratorRoleGuard)
+@UseGuards(BusinessRoleGuard, PosCapabilityGuard)
 @BusinessRoles()
 export class PosController {
   constructor(
@@ -34,21 +37,25 @@ export class PosController {
   ) {}
 
   @Get('catalog')
+  @RequirePosCapability('stock_read')
   catalog() {
     return this.products.listCatalog();
   }
 
   @Get('products')
+  @RequirePosCapability('stock_read')
   productsStock() {
     return this.products.listStock();
   }
 
   @Post('products')
+  @RequirePosCapability('stock_write')
   createProduct(@Body() dto: CreatePosProductDto) {
     return this.products.create(dto);
   }
 
   @Patch('products/:id')
+  @RequirePosCapability('stock_write')
   updateProduct(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdatePosProductDto,
@@ -57,6 +64,7 @@ export class PosController {
   }
 
   @Patch('products/:id/stock')
+  @RequirePosCapability('stock_write')
   setStock(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdatePosStockDto,
@@ -65,11 +73,13 @@ export class PosController {
   }
 
   @Delete('products/:id')
+  @RequirePosCapability('stock_write')
   removeProduct(@Param('id', ParseIntPipe) id: number) {
     return this.products.remove(id);
   }
 
   @Get('sales')
+  @RequirePosCapability('sales')
   listSales(@Query() q: PosSalesListQueryDto) {
     return this.sales.listSales(
       q.from,
@@ -80,6 +90,7 @@ export class PosController {
   }
 
   @Get('sales/export')
+  @RequirePosCapability('sales')
   async exportSalesCsv(
     @Query('from') from: string,
     @Query('to') to: string,
@@ -97,6 +108,7 @@ export class PosController {
   }
 
   @Post('sales')
+  @RequirePosCapability('sales')
   createSale(
     @Body() dto: CreatePosSaleDto,
     @Req() req: { user: { userId: number } },

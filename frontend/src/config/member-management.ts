@@ -38,6 +38,7 @@ export const routes = {
   rutinasAsignaciones: '/gestion/rutinas/asignaciones',
   rutinasAsignacionesNuevo: '/gestion/rutinas/asignaciones/nuevo',
   nutricion: '/gestion/nutricion',
+  nutricionGeneral: '/gestion/nutricion/general',
   nutricionNuevo: '/gestion/nutricion/nuevo',
   nutricionMember: (id: number) => `/gestion/nutricion/${id}`,
   /** Recepción: validar entrada sin menú lateral (abrir en nueva pestaña). */

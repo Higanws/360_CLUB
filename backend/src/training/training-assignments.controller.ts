@@ -12,6 +12,11 @@ import {
 } from '@nestjs/common';
 import { BusinessRoleGuard } from '../members/business-role.guard';
 import { BusinessRoles } from '../members/roles.decorator';
+import {
+  RequireStaffSpecs,
+  StaffSpecializationGuard,
+} from '../shared/application/security/staff-specialization.guard';
+import { STAFF_SPEC } from '../shared/application/security/staff-specialization';
 import { CreateTrainingAssignmentDto } from './dto/create-training-assignment.dto';
 import { TrainingAssignmentsListQueryDto } from './dto/training-assignments-list-query.dto';
 import { TrainingAssignmentsService } from './training-assignments.service';
@@ -19,7 +24,8 @@ import { TrainingAssignmentsService } from './training-assignments.service';
 type JwtReq = { user: { userId: number; role_name: string } };
 
 @Controller('training-assignments')
-@UseGuards(BusinessRoleGuard)
+@UseGuards(BusinessRoleGuard, StaffSpecializationGuard)
+@RequireStaffSpecs(STAFF_SPEC.ENTRENADOR)
 @BusinessRoles()
 export class TrainingAssignmentsController {
   constructor(private readonly assignments: TrainingAssignmentsService) {}

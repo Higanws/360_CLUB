@@ -9,6 +9,8 @@ export type UserProfileDto = {
   first_name: string | null;
   last_name: string | null;
   email: string | null;
+  specialization_ids: number[];
+  specializations: { id: number; name: string }[];
 };
 
 export function toUserProfileDto(
@@ -16,8 +18,11 @@ export function toUserProfileDto(
     GymMember,
     'id' | 'username' | 'role_name' | 'first_name' | 'last_name' | 'email'
   >,
+  specs: { id: number; name: string }[] = [],
 ): UserProfileDto {
   const role = normalizeClubRole(member.role_name);
+  const specialization_ids = specs.map((s) => s.id);
+  const specializations = specs;
   if (role === 'member') {
     return {
       id: member.id,
@@ -26,6 +31,8 @@ export function toUserProfileDto(
       first_name: member.first_name,
       last_name: member.last_name,
       email: null,
+      specialization_ids: [],
+      specializations: [],
     };
   }
   return {
@@ -35,5 +42,7 @@ export function toUserProfileDto(
     first_name: member.first_name,
     last_name: member.last_name,
     email: member.email,
+    specialization_ids,
+    specializations,
   };
 }

@@ -226,17 +226,30 @@ Demo rápida sin VPS: `npm run api` + `npm run web` + `npm run demo:tunnel`.
 | Módulo | Descripción |
 |--------|-------------|
 | Afiliación | Socios, staff, planes, cobros |
-| POS | Venta e inventario |
-| Ejercicios | Catálogo + videos |
-| Entrenamiento | Rutinas y asignaciones |
-| Nutrición | Planes alimentarios |
-| Control de acceso | Kiosk + historial |
+| POS | Venta e inventario (Cajero: ventas + lectura stock; Stock: inventario R/W) |
+| Ejercicios | Catálogo + videos (Entrenador) |
+| Entrenamiento | Rutinas **generales** (fuente única compartida) y **personalizadas** (asignación) |
+| Nutrición | Dieta **general** del club + dieta **personal** por socio |
+| Control de acceso | Kiosk + historial (Cajero / recepción) |
 | Dashboard | Métricas |
-| Portal socio | Dieta y rutina (lectura) |
+| Portal socio | Dieta y rutina: bloques General + Personalizado si aplican |
 | Wizard | Primera instalación |
 | MCP | Tools para agentes/bots |
 
-**Admin:** gestión completa. **Staff:** operativa (socios asignados). **Socio:** `/socio/*` sin escritura.
+**Admin** (`role_name = administrator`): gestión completa (bypass de especializaciones).
+
+**Staff** (`staff_member`): módulos según especializaciones acumulables en `s_specialization`:
+
+| Especialización | Módulos |
+|-----------------|---------|
+| Entrenador | Ejercicios, rutinas, asignaciones |
+| Nutricionista | Nutrición (general + personal) |
+| Cajero | POS ventas, lectura de stock, socios (operativa), control de acceso |
+| Stock | POS inventario (lectura/escritura) |
+
+**Socio** (`member`, `activated = 1`): `/socio/*` en lectura. Flags `subscribe_nutrition_general` / `subscribe_training_general` (default 1 al alta). Editar el plan/rutina general afecta a todos los suscritos sin copiar JSON por socio.
+
+Ya **no** existe el dominio Clases (`class_schedule` / `gym_member_class`).
 
 UI gestión: prefijo de componentes `Mm*` · permisos en `frontend/src/lib/role-access.ts`.
 
